@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mia Almeida Photography</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <!-- Firebase SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import {
+      getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import {
+      getFirestore, collection, doc, getDocs, setDoc, deleteDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import {
+      getStorage, ref, uploadBytes, getDownloadURL, deleteObject
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+    // ─────────────────────────────────────────────
+    // 🔧 PASTE YOUR FIREBASE CONFIG HERE
+    // Go to: Firebase Console → Project Settings → Your Apps → SDK Setup
+    // ─────────────────────────────────────────────
+    const firebaseConfig = {
+      apiKey:            "AIzaSyB29c75VwZsuT7tm6UjVekBaZ3v3jZ7dX4",
+      authDomain:        "miadalmeidacom.firebaseapp.com",
+      projectId:         "miadalmeidacom",
+      storageBucket:     "miadalmeidacom.firebasestorage.app",
+      messagingSenderId: "751447281363",
+      appId:             "1:751447281363:web:66520b2871108189570e26"
+    };
+
+    const app     = initializeApp(firebaseConfig);
+    const auth    = getAuth(app);
+    const db      = getFirestore(app);
+    const storage = getStorage(app);
+
+    // ── Auth state ──
+    let isAdmin = false;
+
+    onAuthStateChanged(auth, user => {
+      isAdmin = !!user;
+      updateAdminUI();
+      loadAlbums();
+    });
+
+    async function login(email, password) {
+      await signInWithEmailAndPassword(auth, email, password);
+    }
+
+    async function logout() {
+      await signOut(auth);
+    }
+
+    // ── Album operations ──
+    async function loadAlbums() {
+      const snap = await getDocs(collection(db, "albums"));
+      const albums = [];
+      snap.forEach(d => albums.push({ id: d.id, ...d.data() }));
+      albums.sort((a, b) => (a.order || 0) - (b.order || 0));
+      window._albums = albums;
+      renderAlbums();
+    }
+
+    async function createAlbum(name) {
+      const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now();
+      await setDoc(doc(db, "albums", id), { name, photos: [], order: Date.now() });
+      await loadAlbums();
+      toast(`Album "${name}" created`);
+    }
+
+    async function deleteAlbum(albumId) {
+      // Delete all photos in storage first
+      const album = window._albums.find(a => a.id === albumId);
+      if (album && album.photos) {
+        for (const photo of album.photos) {
+          try { await deleteObject(ref(storage, photo.storagePath)); } catch(e) {}
+        }
+      }
+      await deleteDoc(doc(db, "albums", albumId));
+      await loadAlbums();
+      toast("Album removed");
+    }
+
+    async function uploadPhoto(albumId, file) {
+      const path = `photos/${albumId}/${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      const photoEntry = { url, storagePath: path, name: file.name, uploadedAt: Date.now() };
+      await updateDoc(doc(db, "albums", albumId), { photos: arrayUnion(photoEntry) });
+      return photoEntry;
+    }
+
+    async function deletePhoto(albumId, photo) {
+      try { await deleteObject(ref(storage, photo.storagePath)); } catch(e) {}
+      await updateDoc(doc(db, "albums", albumId), { photos: arrayRemove(photo) });
+    }
+
+    // Expose to window for HTML event handlers
+    window.firebase = { login, logout, loadAlbums, createAlbum, deleteAlbum, uploadPhoto, deletePhoto };
+    window._isAdmin = () => isAdmin;
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #f5f0e8;
+      --dark:  #1a1713;
+      --mid:   #6b6560;
+      --accent:#b8935a;
+      --light-border: #e0d9ce;
+      --white: #ffffff;
+      --red:   #c0392b;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Jost', sans-serif;
+      background: var(--cream);
+      color: var(--dark);
+      min-height: 100vh;
+      font-weight: 300;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.4rem 3rem;
+      background: rgba(245,240,232,0.93);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--light-border);
+    }
+    .nav-logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.5rem; font-weight: 300; letter-spacing: 0.04em;
+      color: var(--dark); text-decoration: none; cursor: pointer;
+    }
+    .nav-logo span { font-style: italic; color: var(--accent); }
+    .nav-links { display: flex; gap: 2rem; list-style: none; align-items: center; }
+    .nav-links a {
+      font-size: 0.78rem; letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--mid); text-decoration: none; cursor: pointer; transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--dark); }
+    .nav-admin-btn {
+      font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase;
+      color: var(--accent); background: none; border: 1px solid var(--accent);
+      padding: 0.4rem 1rem; cursor: pointer; font-family: 'Jost', sans-serif;
+      font-weight: 400; transition: all 0.2s;
+    }
+    .nav-admin-btn:hover,
+    .nav-admin-btn.active { background: var(--accent); color: var(--white); }
+
+    /* ── HERO ── */
+    #hero {
+      height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 2rem; position: relative; overflow: hidden;
+    }
+    .hero-bg {
+      position: absolute; inset: 0;
+      background: linear-gradient(160deg, #e8dfd0 0%, #f5f0e8 50%, #ede5d8 100%);
+    }
+    .hero-bg::after {
+      content: ''; position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23b8935a' fill-opacity='0.04'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/svg%3E");
+    }
+    .hero-content { position: relative; z-index: 1; animation: fadeUp 1.2s ease both; }
+    .hero-eyebrow { font-size: 0.72rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--accent); margin-bottom: 1.2rem; }
+    .hero-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(3rem, 8vw, 6rem); font-weight: 300;
+      line-height: 1.05; color: var(--dark); margin-bottom: 1.5rem;
+    }
+    .hero-title em { font-style: italic; color: var(--accent); }
+    .hero-sub { font-size: 0.88rem; letter-spacing: 0.12em; color: var(--mid); margin-bottom: 2.5rem; }
+    .hero-cta {
+      font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--dark); background: none;
+      border: none; border-bottom: 1px solid var(--accent);
+      padding-bottom: 0.2rem; cursor: pointer;
+      font-family: 'Jost', sans-serif; transition: color 0.2s;
+    }
+    .hero-cta:hover { color: var(--accent); }
+    .hero-scroll {
+      position: absolute; bottom: 2.5rem; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+      color: var(--mid); font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase;
+      animation: bounce 2s infinite;
+    }
+    .scroll-line { width: 1px; height: 40px; background: linear-gradient(to bottom, var(--accent), transparent); }
+
+    /* ── SECTIONS ── */
+    section { padding: 6rem 3rem; }
+    .section-label { font-size: 0.68rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.8rem; }
+    .section-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 300; margin-bottom: 3rem; }
+
+    /* ── ALBUMS GRID ── */
+    #albums { background: var(--white); }
+    .albums-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; max-width: 1200px; margin: 0 auto; }
+    .album-card { position: relative; aspect-ratio: 4/3; overflow: hidden; cursor: pointer; background: var(--light-border); }
+    .album-card img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s; display: block; }
+    .album-card:hover img { transform: scale(1.04); }
+    .album-name-bar {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: rgba(26,23,19,0.6); color: var(--white);
+      padding: 0.8rem 1rem;
+      font-family: 'Cormorant Garamond', serif; font-size: 1.1rem; font-weight: 300;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .album-count { font-family: 'Jost', sans-serif; font-size: 0.7rem; opacity: 0.7; }
+    .album-placeholder {
+      width: 100%; height: 100%; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 0.5rem;
+      color: var(--mid); font-size: 0.8rem; letter-spacing: 0.1em;
+    }
+    .loading-shimmer {
+      background: linear-gradient(90deg, var(--light-border) 25%, var(--cream) 50%, var(--light-border) 75%);
+      background-size: 200% 100%; animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* ── ALBUM VIEW ── */
+    #album-view {
+      display: none; position: fixed; inset: 0;
+      background: var(--white); z-index: 500; overflow-y: auto; padding-top: 5rem;
+    }
+    #album-view.open { display: block; }
+    .album-view-header {
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 1.2rem 3rem; border-bottom: 1px solid var(--light-border);
+      position: sticky; top: 0; background: var(--white); z-index: 10;
+    }
+    .back-btn {
+      background: none; border: none; cursor: pointer;
+      display: flex; align-items: center; gap: 0.5rem;
+      font-family: 'Jost', sans-serif; font-size: 0.75rem;
+      letter-spacing: 0.15em; text-transform: uppercase; color: var(--mid); transition: color 0.2s;
+    }
+    .back-btn:hover { color: var(--dark); }
+    .album-view-title { font-family: 'Cormorant Garamond', serif; font-size: 1.8rem; font-weight: 300; }
+    .album-view-actions { margin-left: auto; display: flex; gap: 0.8rem; }
+
+    .photos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; padding: 2rem 3rem; }
+    .photo-item { position: relative; aspect-ratio: 3/2; overflow: hidden; background: var(--light-border); }
+    .photo-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s; display: block; cursor: pointer; }
+    .photo-item:hover img { transform: scale(1.04); }
+    .photo-delete-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem;
+      background: rgba(192,57,43,0.9); color: white; border: none;
+      width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+      font-size: 0.9rem; display: none; align-items: center; justify-content: center; z-index: 5;
+    }
+    .admin-mode .photo-delete-btn { display: flex; }
+
+    .upload-zone {
+      border: 2px dashed var(--light-border); aspect-ratio: 3/2;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 0.5rem; cursor: pointer;
+      transition: border-color 0.2s; font-size: 0.78rem; color: var(--mid); letter-spacing: 0.08em;
+    }
+    .upload-zone:hover { border-color: var(--accent); color: var(--accent); }
+    .upload-zone input { display: none; }
+    .upload-progress {
+      position: absolute; bottom: 0; left: 0; height: 3px;
+      background: var(--accent); transition: width 0.3s; width: 0;
+    }
+
+    /* ── CONTACT ── */
+    #contact { background: var(--cream); }
+    .contact-inner { max-width: 560px; margin: 0 auto; }
+    .contact-form { display: flex; flex-direction: column; gap: 1.2rem; }
+    .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .form-group label { font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--mid); }
+    .form-group input,
+    .form-group textarea {
+      background: var(--white); border: 1px solid var(--light-border);
+      padding: 0.85rem 1rem; font-family: 'Jost', sans-serif;
+      font-size: 0.9rem; font-weight: 300; color: var(--dark); outline: none; transition: border-color 0.2s;
+    }
+    .form-group input:focus,
+    .form-group textarea:focus { border-color: var(--accent); }
+    .form-group textarea { resize: vertical; min-height: 140px; }
+    .btn-submit {
+      font-family: 'Jost', sans-serif; font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase;
+      background: var(--dark); color: var(--white); border: none; padding: 1rem 2.5rem;
+      cursor: pointer; transition: background 0.2s; align-self: flex-start;
+    }
+    .btn-submit:hover { background: var(--accent); }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── FOOTER ── */
+    footer { background: var(--dark); color: rgba(255,255,255,0.4); text-align: center; padding: 2rem; font-size: 0.75rem; letter-spacing: 0.1em; }
+    footer span { color: var(--accent); }
+
+    /* ── ADMIN BAR ── */
+    #admin-bar {
+      display: none; position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--dark); color: var(--white);
+      padding: 0.9rem 2rem; z-index: 200;
+      align-items: center; gap: 1rem; font-size: 0.78rem;
+    }
+    #admin-bar.visible { display: flex; }
+    #admin-bar span { opacity: 0.5; flex: 1; }
+    .admin-action-btn {
+      background: none; border: 1px solid rgba(255,255,255,0.25); color: var(--white);
+      padding: 0.5rem 1.2rem; font-family: 'Jost', sans-serif; font-size: 0.72rem;
+      letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; transition: all 0.2s;
+    }
+    .admin-action-btn:hover { background: var(--accent); border-color: var(--accent); }
+    .admin-action-btn.danger { border-color: var(--red); }
+    .admin-action-btn.danger:hover { background: var(--red); }
+
+    /* ── MODALS ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(26,23,19,0.85);
+      backdrop-filter: blur(4px); z-index: 1000;
+      display: none; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--white); padding: 3rem; max-width: 480px; width: 90%;
+      animation: fadeUp 0.3s ease both; position: relative;
+    }
+    .modal-close { position: absolute; top: 1rem; right: 1.2rem; background: none; border: none; font-size: 1.4rem; cursor: pointer; color: var(--mid); }
+    .modal-close:hover { color: var(--dark); }
+    .modal h2 { font-family: 'Cormorant Garamond', serif; font-size: 1.8rem; font-weight: 300; margin-bottom: 0.3rem; }
+    .modal p { font-size: 0.82rem; color: var(--mid); margin-bottom: 1.5rem; }
+    .modal input { width: 100%; padding: 0.85rem 1rem; border: 1px solid var(--light-border); font-family: 'Jost', sans-serif; font-size: 0.9rem; outline: none; margin-bottom: 0.8rem; transition: border-color 0.2s; }
+    .modal input:focus { border-color: var(--accent); }
+    .modal-error { color: var(--red); font-size: 0.78rem; margin-bottom: 0.8rem; display: none; }
+    .btn-primary {
+      background: var(--dark); color: var(--white); border: none; padding: 0.9rem 2rem;
+      font-family: 'Jost', sans-serif; font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase;
+      cursor: pointer; width: 100%; transition: background 0.2s;
+    }
+    .btn-primary:hover { background: var(--accent); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── MANAGE ALBUMS MODAL ── */
+    .album-list-manage { list-style: none; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.5rem; }
+    .album-list-manage li {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.7rem 1rem; border: 1px solid var(--light-border); font-size: 0.88rem;
+    }
+    .album-list-manage li button { background: none; border: none; color: var(--red); cursor: pointer; font-size: 0.8rem; font-family: 'Jost', sans-serif; }
+    .new-album-row { display: flex; gap: 0.5rem; }
+    .new-album-row input { flex: 1; margin-bottom: 0; }
+    .btn-small {
+      background: var(--dark); color: var(--white); border: none; padding: 0 1rem;
+      font-family: 'Jost', sans-serif; font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase;
+      cursor: pointer; white-space: nowrap;
+    }
+    .btn-small:hover { background: var(--accent); }
+
+    /* ── LIGHTBOX ── */
+    #lightbox { display: none; position: fixed; inset: 0; background: rgba(26,23,19,0.97); z-index: 900; align-items: center; justify-content: center; }
+    #lightbox.open { display: flex; }
+    #lightbox img { max-width: 90vw; max-height: 90vh; object-fit: contain; }
+    .lb-close { position: absolute; top: 1.5rem; right: 2rem; background: none; border: none; color: rgba(255,255,255,0.6); font-size: 2rem; cursor: pointer; }
+    .lb-close:hover { color: white; }
+    .lb-prev, .lb-next {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: rgba(255,255,255,0.5);
+      font-size: 2rem; cursor: pointer; padding: 1rem; transition: color 0.2s;
+    }
+    .lb-prev { left: 1rem; } .lb-next { right: 1rem; }
+    .lb-prev:hover, .lb-next:hover { color: white; }
+
+    /* ── SETUP BANNER ── */
+    #setup-banner {
+      display: none; position: fixed; top: 0; left: 0; right: 0;
+      background: #e67e22; color: white; text-align: center;
+      padding: 0.8rem; font-size: 0.82rem; z-index: 9999; letter-spacing: 0.05em;
+    }
+    #setup-banner a { color: white; font-weight: 500; }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; bottom: 5rem; left: 50%; transform: translateX(-50%);
+      background: var(--dark); color: var(--white);
+      padding: 0.7rem 1.8rem; font-size: 0.8rem; letter-spacing: 0.08em;
+      z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap;
+    }
+    #toast.show { opacity: 1; }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes bounce { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(6px); } }
+
+    @media (max-width: 640px) {
+      nav { padding: 1rem 1.2rem; }
+      section { padding: 4rem 1.2rem; }
+      .photos-grid, .album-view-header { padding-left: 1.2rem; padding-right: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Setup warning banner (shown if Firebase not configured) -->
+<div id="setup-banner">
+  ⚙️ Firebase not configured yet. See <a href="SETUP.md">SETUP.md</a> for instructions.
+</div>
+
+<!-- NAV -->
+<nav>
+  <span class="nav-logo" onclick="showSection('hero')">Mia <span>Almeida</span></span>
+  <ul class="nav-links">
+    <li><a onclick="showSection('hero')">Home</a></li>
+    <li><a onclick="showSection('albums')">Albums</a></li>
+    <li><a onclick="showSection('contact')">Contact</a></li>
+    <li><button class="nav-admin-btn" id="admin-nav-btn" onclick="handleAdminClick()">Admin</button></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-content">
+    <p class="hero-eyebrow">Photography by</p>
+    <h1 class="hero-title">Mia <em>Almeida</em></h1>
+    <p class="hero-sub">Capturing light, emotion &amp; fleeting moments</p>
+    <button class="hero-cta" onclick="showSection('albums')">View Albums</button>
+  </div>
+  <div class="hero-scroll"><div class="scroll-line"></div>scroll</div>
+</section>
+
+<!-- ALBUMS -->
+<section id="albums">
+  <p class="section-label">Portfolio</p>
+  <h2 class="section-title">Albums</h2>
+  <div class="albums-grid" id="albums-grid">
+    <!-- shimmer placeholders -->
+    <div class="album-card loading-shimmer"></div>
+    <div class="album-card loading-shimmer"></div>
+    <div class="album-card loading-shimmer"></div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact">
+  <div class="contact-inner">
+    <p class="section-label">Get in Touch</p>
+    <h2 class="section-title">Contact</h2>
+    <form class="contact-form" id="contact-form" onsubmit="handleContact(event)">
+      <div class="form-group">
+        <label>Your Name</label>
+        <input type="text" id="cf-name" placeholder="Jane Smith" required />
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="cf-email" placeholder="jane@example.com" required />
+      </div>
+      <div class="form-group">
+        <label>Subject</label>
+        <input type="text" id="cf-subject" placeholder="Wedding, Portrait, Commercial…" />
+      </div>
+      <div class="form-group">
+        <label>Message</label>
+        <textarea id="cf-message" placeholder="Tell me about your project…"></textarea>
+      </div>
+      <button type="submit" class="btn-submit" id="send-btn">Send Message</button>
+    </form>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  &copy; <span id="year"></span> <span>Mia Almeida</span> Photography — All rights reserved
+</footer>
+
+<!-- ADMIN BAR -->
+<div id="admin-bar">
+  <span>● Admin mode active</span>
+  <button class="admin-action-btn" onclick="openManageAlbums()">Manage Albums</button>
+  <button class="admin-action-btn danger" onclick="doLogout()">Log Out</button>
+</div>
+
+<!-- LOGIN MODAL -->
+<div class="modal-overlay" id="login-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('login-modal')">&times;</button>
+    <h2>Admin Login</h2>
+    <p>Sign in with your Firebase credentials to manage photos and albums.</p>
+    <input type="email" id="login-email" placeholder="Email address" />
+    <input type="password" id="login-pw" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
+    <p class="modal-error" id="login-error">Incorrect email or password.</p>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
+  </div>
+</div>
+
+<!-- MANAGE ALBUMS MODAL -->
+<div class="modal-overlay" id="manage-modal">
+  <div class="modal" style="max-width:520px">
+    <button class="modal-close" onclick="closeModal('manage-modal')">&times;</button>
+    <h2>Manage Albums</h2>
+    <p>Add or remove photo albums from your portfolio.</p>
+    <ul class="album-list-manage" id="manage-album-list"></ul>
+    <div class="new-album-row">
+      <input type="text" id="new-album-name" placeholder="New album name…" onkeydown="if(event.key==='Enter')addAlbum()" />
+      <button class="btn-small" onclick="addAlbum()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ALBUM VIEW -->
+<div id="album-view">
+  <div class="album-view-header">
+    <button class="back-btn" onclick="closeAlbumView()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5M5 12l7 7M5 12l7-7"/></svg>
+      Back
+    </button>
+    <h2 class="album-view-title" id="album-view-title"></h2>
+    <div class="album-view-actions" id="album-view-actions"></div>
+  </div>
+  <div class="photos-grid" id="photos-grid"></div>
+</div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox">
+  <button class="lb-close" onclick="closeLightbox()">&times;</button>
+  <button class="lb-prev" onclick="lbNav(-1)">&#8249;</button>
+  <img id="lightbox-img" src="" alt="" />
+  <button class="lb-next" onclick="lbNav(1)">&#8250;</button>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- EmailJS -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
+<script>
+  // ─────────────────────────────────────────────
+  // 🔧 EMAILJS CONFIG
+  // Go to: emailjs.com → Account → API Keys
+  // ─────────────────────────────────────────────
+  const EMAILJS_PUBLIC_KEY  = "SH-gloD3QGncR2gDb";
+  const EMAILJS_SERVICE_ID  = "service_4qvgwqi";
+  const EMAILJS_TEMPLATE_ID = "template_6rat7tr";
+
+  emailjs.init(EMAILJS_PUBLIC_KEY);
+
+  // ── State ──
+  let currentAlbum = null;
+  let lbIndex = 0;
+
+  // ── Check config ──
+  window.addEventListener('load', () => {
+    document.getElementById('year').textContent = new Date().getFullYear();
+    if (document.querySelector('script[type="module"]')
+        && EMAILJS_PUBLIC_KEY === "YOUR_EMAILJS_PUBLIC_KEY") {
+      document.getElementById('setup-banner').style.display = 'block';
+      document.body.style.paddingTop = '2.5rem';
+    }
+  });
+
+  // ── Admin UI update (called by Firebase module) ──
+  function updateAdminUI() {
+    const isAdmin = window._isAdmin ? window._isAdmin() : false;
+    const bar = document.getElementById('admin-bar');
+    const btn = document.getElementById('admin-nav-btn');
+    if (isAdmin) {
+      bar.classList.add('visible');
+      btn.textContent = 'Log Out';
+      btn.classList.add('active');
+    } else {
+      bar.classList.remove('visible');
+      btn.textContent = 'Admin';
+      btn.classList.remove('active');
+    }
+    if (currentAlbum) {
+      const view = document.getElementById('album-view');
+      isAdmin ? view.classList.add('admin-mode') : view.classList.remove('admin-mode');
+      renderPhotosGrid();
+    }
+  }
+
+  // ── Render albums grid ──
+  function renderAlbums() {
+    const albums = window._albums || [];
+    const grid = document.getElementById('albums-grid');
+    if (albums.length === 0) {
+      grid.innerHTML = `<p style="color:var(--mid);font-size:0.88rem;letter-spacing:0.08em;grid-column:1/-1">No albums yet. Log in as admin to add albums.</p>`;
+      return;
+    }
+    grid.innerHTML = albums.map(album => {
+      const cover = album.photos && album.photos[0];
+      return `<div class="album-card" onclick="openAlbum('${album.id}')">
+        ${cover
+          ? `<img src="${cover.url}" alt="${album.name}" loading="lazy" />`
+          : `<div class="album-placeholder">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="1"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              No photos yet
+            </div>`
+        }
+        <div class="album-name-bar">
+          <span>${album.name}</span>
+          <span class="album-count">${(album.photos || []).length} photo${(album.photos||[]).length !== 1 ? 's' : ''}</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Open album ──
+  function openAlbum(albumId) {
+    const albums = window._albums || [];
+    currentAlbum = albums.find(a => a.id === albumId);
+    if (!currentAlbum) return;
+    document.getElementById('album-view-title').textContent = currentAlbum.name;
+    const view = document.getElementById('album-view');
+    view.classList.add('open');
+    if (window._isAdmin && window._isAdmin()) view.classList.add('admin-mode');
+    renderPhotosGrid();
+  }
+
+  function renderPhotosGrid() {
+    const grid = document.getElementById('photos-grid');
+    const isAdmin = window._isAdmin && window._isAdmin();
+    const photos = currentAlbum.photos || [];
+
+    let html = photos.map((photo, i) => `
+      <div class="photo-item">
+        <img src="${photo.url}" alt="${photo.name}" loading="lazy" onclick="openLightbox(${i})" />
+        <button class="photo-delete-btn" onclick="removePhoto(${i})" title="Delete">&#x2715;</button>
+      </div>`).join('');
+
+    if (isAdmin) {
+      html += `<label class="upload-zone">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload Photos
+        <input type="file" accept="image/*" multiple onchange="handleUpload(event)" />
+      </label>`;
+    }
+    grid.innerHTML = html;
+  }
+
+  function closeAlbumView() {
+    document.getElementById('album-view').classList.remove('open', 'admin-mode');
+    currentAlbum = null;
+  }
+
+  // ── Upload photos ──
+  async function handleUpload(event) {
+    const files = Array.from(event.target.files);
+    if (!files.length) return;
+    toast(`Uploading ${files.length} photo${files.length > 1 ? 's' : ''}…`);
+    try {
+      for (const file of files) {
+        const photo = await window.firebase.uploadPhoto(currentAlbum.id, file);
+        currentAlbum.photos = [...(currentAlbum.photos || []), photo];
+      }
+      // Refresh from Firestore
+      await window.firebase.loadAlbums();
+      const updated = (window._albums || []).find(a => a.id === currentAlbum.id);
+      if (updated) currentAlbum = updated;
+      renderPhotosGrid();
+      toast(`${files.length} photo${files.length > 1 ? 's' : ''} uploaded`);
+    } catch(e) {
+      toast('Upload failed — check Firebase Storage rules');
+    }
+    event.target.value = '';
+  }
+
+  // ── Delete photo ──
+  async function removePhoto(index) {
+    if (!confirm('Remove this photo?')) return;
+    const photo = currentAlbum.photos[index];
+    try {
+      await window.firebase.deletePhoto(currentAlbum.id, photo);
+      currentAlbum.photos.splice(index, 1);
+      renderPhotosGrid();
+      toast('Photo removed');
+    } catch(e) {
+      toast('Error removing photo');
+    }
+  }
+
+  // ── Lightbox ──
+  function openLightbox(index) {
+    lbIndex = index;
+    document.getElementById('lightbox-img').src = currentAlbum.photos[index].url;
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
+  function lbNav(dir) {
+    const photos = currentAlbum.photos || [];
+    lbIndex = (lbIndex + dir + photos.length) % photos.length;
+    document.getElementById('lightbox-img').src = photos[lbIndex].url;
+  }
+
+  // ── Manage albums ──
+  function openManageAlbums() {
+    renderManageList();
+    openModal('manage-modal');
+  }
+  function renderManageList() {
+    const albums = window._albums || [];
+    document.getElementById('manage-album-list').innerHTML = albums.map(a => `
+      <li>
+        <span>${a.name} <small style="opacity:.5">(${(a.photos||[]).length} photos)</small></span>
+        <button onclick="removeAlbum('${a.id}')">Remove</button>
+      </li>`).join('') || '<li style="opacity:.5;font-size:.82rem">No albums yet</li>';
+  }
+  async function addAlbum() {
+    const input = document.getElementById('new-album-name');
+    const name = input.value.trim();
+    if (!name) return;
+    await window.firebase.createAlbum(name);
+    input.value = '';
+    renderManageList();
+  }
+  async function removeAlbum(id) {
+    const album = (window._albums || []).find(a => a.id === id);
+    if (!album) return;
+    if (!confirm(`Remove "${album.name}" and all its photos? This cannot be undone.`)) return;
+    await window.firebase.deleteAlbum(id);
+    renderManageList();
+  }
+
+  // ── Auth ──
+  function handleAdminClick() {
+    if (window._isAdmin && window._isAdmin()) { doLogout(); return; }
+    openModal('login-modal');
+    setTimeout(() => document.getElementById('login-email').focus(), 100);
+  }
+  async function doLogin() {
+    const email = document.getElementById('login-email').value;
+    const pw    = document.getElementById('login-pw').value;
+    const btn   = document.getElementById('login-btn');
+    const err   = document.getElementById('login-error');
+    err.style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      await window.firebase.login(email, pw);
+      closeModal('login-modal');
+      document.getElementById('login-email').value = '';
+      document.getElementById('login-pw').value = '';
+      toast('Welcome back, Mia ✦');
+    } catch(e) {
+      err.style.display = 'block';
+    }
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+  async function doLogout() {
+    await window.firebase.logout();
+    toast('Logged out');
+  }
+
+  // ── Contact form via EmailJS ──
+  async function handleContact(e) {
+    e.preventDefault();
+    const btn = document.getElementById('send-btn');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        from_name:    document.getElementById('cf-name').value,
+        from_email:   document.getElementById('cf-email').value,
+        subject:      document.getElementById('cf-subject').value,
+        message:      document.getElementById('cf-message').value,
+      });
+      toast("Message sent! I'll be in touch soon.");
+      document.getElementById('contact-form').reset();
+    } catch(err) {
+      toast('Message failed to send. Please try again.');
+    }
+    btn.disabled = false; btn.textContent = 'Send Message';
+  }
+
+  // ── Modals ──
+  function openModal(id) { document.getElementById(id).classList.add('open'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+  document.querySelectorAll('.modal-overlay').forEach(el =>
+    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }));
+
+  // ── Nav ──
+  function showSection(id) { document.getElementById(id).scrollIntoView({ behavior: 'smooth' }); }
+
+  // ── Keys ──
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeLightbox(); closeAlbumView(); }
+    if (document.getElementById('lightbox').classList.contains('open')) {
+      if (e.key === 'ArrowLeft') lbNav(-1);
+      if (e.key === 'ArrowRight') lbNav(1);
+    }
+  });
+
+  // ── Toast ──
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 3000);
+  }
+</script>
+</body>
+</html>
