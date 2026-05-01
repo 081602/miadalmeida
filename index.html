@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mia Almeida Photography</title>
+  <title>Mia d'Almeida Photography</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet" />
 
@@ -109,10 +109,11 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --cream: #f5f0e8;
+      --cream: #F9F7F4;
+      --cream-dark: #D1D5DB;
       --dark:  #1a1713;
       --mid:   #6b6560;
-      --accent:#b8935a;
+      --accent: #839DAA;
       --light-border: #e0d9ce;
       --white: #ffffff;
       --red:   #c0392b;
@@ -132,7 +133,7 @@
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
       display: flex; align-items: center; justify-content: space-between;
       padding: 1.4rem 3rem;
-      background: rgba(245,240,232,0.93);
+      background: rgba(238,240,240,0.93);
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--light-border);
     }
@@ -165,7 +166,7 @@
     }
     .hero-bg {
       position: absolute; inset: 0;
-      background: linear-gradient(160deg, #e8dfd0 0%, #f5f0e8 50%, #ede5d8 100%);
+      background: linear-gradient(160deg, #F9F7F4 0%, #F9F7F4 50%, #F9F7F4 100%);
     }
     .hero-bg::after {
       content: ''; position: absolute; inset: 0;
@@ -409,7 +410,7 @@
 
 <!-- NAV -->
 <nav>
-  <span class="nav-logo" onclick="showSection('hero')">Mia <span>Almeida</span></span>
+  <span class="nav-logo" onclick="showSection('hero')">Mia <span>d'Almeida</span></span>
   <ul class="nav-links">
     <li><a onclick="showSection('hero')">Home</a></li>
     <li><a onclick="showSection('albums')">Albums</a></li>
@@ -423,8 +424,7 @@
   <div class="hero-bg"></div>
   <div class="hero-content">
     <p class="hero-eyebrow">Photography by</p>
-    <h1 class="hero-title">Mia <em>Almeida</em></h1>
-    <p class="hero-sub">Capturing light, emotion &amp; fleeting moments</p>
+    <h1 class="hero-title">Mia <em>d'Almeida</em></h1>
     <button class="hero-cta" onclick="showSection('albums')">View Albums</button>
   </div>
   <div class="hero-scroll"><div class="scroll-line"></div>scroll</div>
@@ -471,7 +471,7 @@
 
 <!-- FOOTER -->
 <footer>
-  &copy; <span id="year"></span> <span>Mia Almeida</span> Photography — All rights reserved
+  &copy; <span id="year"></span> <span>Mia d'Almeida</span> Photography — All rights reserved
 </footer>
 
 <!-- ADMIN BAR -->
@@ -759,10 +759,10 @@
     btn.disabled = true; btn.textContent = 'Sending…';
     try {
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        from_name:    document.getElementById('cf-name').value,
-        from_email:   document.getElementById('cf-email').value,
-        subject:      document.getElementById('cf-subject').value,
-        message:      document.getElementById('cf-message').value,
+        name:    document.getElementById('cf-name').value,
+        email:   document.getElementById('cf-email').value,
+        title:   document.getElementById('cf-subject').value,
+        message: document.getElementById('cf-message').value,
       });
       toast("Message sent! I'll be in touch soon.");
       document.getElementById('contact-form').reset();
