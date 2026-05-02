@@ -763,7 +763,7 @@
         email:   document.getElementById('cf-email').value,
         title:   document.getElementById('cf-subject').value,
         message: document.getElementById('cf-message').value,
-      });
+      }, { publicKey: EMAILJS_PUBLIC_KEY });
       toast("Message sent! I'll be in touch soon.");
       document.getElementById('contact-form').reset();
     } catch(err) {
