@@ -14,7 +14,7 @@
       getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
     import {
-      getFirestore, collection, doc, getDocs, setDoc, deleteDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot
+      getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
     import {
       getStorage, ref, uploadBytes, getDownloadURL, deleteObject
@@ -40,9 +40,24 @@
 
     // ── Auth state ──
     let isAdmin = false;
+    let currentUserRole = null;
+    let currentUserData = null;
 
-    onAuthStateChanged(auth, user => {
-      isAdmin = !!user;
+    onAuthStateChanged(auth, async user => {
+      if (user) {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          currentUserData = snap.data();
+          currentUserRole = currentUserData.role;
+        } else {
+          currentUserRole = 'admin';
+          currentUserData = { role: 'admin' };
+        }
+      } else {
+        currentUserRole = null;
+        currentUserData = null;
+      }
+      isAdmin = currentUserRole === 'admin';
       updateAdminUI();
       loadAlbums();
     });
@@ -58,9 +73,13 @@
     // ── Album operations ──
     async function loadAlbums() {
       const snap = await getDocs(collection(db, "albums"));
-      const albums = [];
+      let albums = [];
       snap.forEach(d => albums.push({ id: d.id, ...d.data() }));
       albums.sort((a, b) => (a.order || 0) - (b.order || 0));
+      if (currentUserRole === 'client') {
+        const allowed = (currentUserData && currentUserData.allowedAlbums) || [];
+        albums = albums.filter(a => allowed.includes(a.id));
+      }
       window._albums = albums;
       renderAlbums();
     }
@@ -100,9 +119,43 @@
       await updateDoc(doc(db, "albums", albumId), { photos: arrayRemove(photo) });
     }
 
+    // ── Client management ──
+    async function createClient(name, email, password) {
+      const resp = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${firebaseConfig.apiKey}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, returnSecureToken: true }) }
+      );
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message);
+      await setDoc(doc(db, 'users', data.localId), { role: 'client', name, email, allowedAlbums: [] });
+      return data.localId;
+    }
+
+    async function getClients() {
+      const snap = await getDocs(collection(db, 'users'));
+      const clients = [];
+      snap.forEach(d => { if (d.data().role === 'client') clients.push({ uid: d.id, ...d.data() }); });
+      return clients;
+    }
+
+    async function deleteClient(uid) {
+      await deleteDoc(doc(db, 'users', uid));
+    }
+
+    async function assignAlbumToClient(uid, albumId) {
+      await updateDoc(doc(db, 'users', uid), { allowedAlbums: arrayUnion(albumId) });
+    }
+
+    async function removeAlbumFromClient(uid, albumId) {
+      await updateDoc(doc(db, 'users', uid), { allowedAlbums: arrayRemove(albumId) });
+    }
+
     // Expose to window for HTML event handlers
-    window.firebase = { login, logout, loadAlbums, createAlbum, deleteAlbum, uploadPhoto, deletePhoto };
+    window.firebase = { login, logout, loadAlbums, createAlbum, deleteAlbum, uploadPhoto, deletePhoto, createClient, getClients, deleteClient, assignAlbumToClient, removeAlbumFromClient };
     window._isAdmin = () => isAdmin;
+    window._isClient = () => currentUserRole === 'client';
+    window._clientData = () => currentUserData;
   </script>
 
   <style>
@@ -149,14 +202,28 @@
       color: var(--mid); text-decoration: none; cursor: pointer; transition: color 0.2s;
     }
     .nav-links a:hover { color: var(--dark); }
-    .nav-admin-btn {
+    .nav-admin-btn, .nav-client-btn {
       font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase;
       color: var(--accent); background: none; border: 1px solid var(--accent);
       padding: 0.4rem 1rem; cursor: pointer; font-family: 'Jost', sans-serif;
       font-weight: 400; transition: all 0.2s;
     }
-    .nav-admin-btn:hover,
-    .nav-admin-btn.active { background: var(--accent); color: var(--white); }
+    .nav-admin-btn:hover, .nav-admin-btn.active,
+    .nav-client-btn:hover, .nav-client-btn.active { background: var(--accent); color: var(--white); }
+
+    /* ── MANAGE CLIENTS ── */
+    .client-list-manage { list-style: none; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.8rem; max-height: 280px; overflow-y: auto; }
+    .client-list-manage li { border: 1px solid var(--light-border); padding: 0.8rem 1rem; font-size: 0.85rem; }
+    .client-list-manage li .client-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+    .client-list-manage li .client-name { font-weight: 400; }
+    .client-list-manage li .client-email { font-size: 0.75rem; color: var(--mid); }
+    .client-list-manage li .client-actions { display: flex; gap: 0.5rem; }
+    .client-list-manage li button { background: none; border: none; cursor: pointer; font-family: 'Jost', sans-serif; font-size: 0.75rem; color: var(--red); }
+    .album-checkboxes { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
+    .album-checkboxes label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--mid); cursor: pointer; }
+    .album-checkboxes input[type=checkbox] { accent-color: var(--accent); }
+    .new-client-fields { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
+    .new-client-fields input { margin-bottom: 0; }
 
     /* ── HERO ── */
     #hero {
@@ -413,8 +480,9 @@
   <span class="nav-logo" onclick="showSection('hero')">Mia <span>Sibley</span></span>
   <ul class="nav-links">
     <li><a onclick="showSection('hero')">Home</a></li>
-    <li><a onclick="showSection('albums')">Albums</a></li>
+    <li><a id="albums-nav-link" onclick="showSection('albums')">Albums</a></li>
     <li><a onclick="showSection('contact')">Contact</a></li>
+    <li><button class="nav-client-btn" id="client-nav-btn" onclick="handleClientClick()">Client Area</button></li>
     <li><button class="nav-admin-btn" id="admin-nav-btn" onclick="handleAdminClick()">Admin</button></li>
   </ul>
 </nav>
@@ -478,6 +546,7 @@
 <div id="admin-bar">
   <span>● Admin mode active</span>
   <button class="admin-action-btn" onclick="openManageAlbums()">Manage Albums</button>
+  <button class="admin-action-btn" onclick="openManageClients()">Manage Clients</button>
   <button class="admin-action-btn danger" onclick="doLogout()">Log Out</button>
 </div>
 
@@ -504,6 +573,23 @@
     <div class="new-album-row">
       <input type="text" id="new-album-name" placeholder="New album name…" onkeydown="if(event.key==='Enter')addAlbum()" />
       <button class="btn-small" onclick="addAlbum()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- MANAGE CLIENTS MODAL -->
+<div class="modal-overlay" id="clients-modal">
+  <div class="modal" style="max-width:560px">
+    <button class="modal-close" onclick="closeModal('clients-modal')">&times;</button>
+    <h2>Manage Clients</h2>
+    <p>Create client accounts and control which albums each client can view.</p>
+    <ul class="client-list-manage" id="client-list"></ul>
+    <div class="new-client-fields">
+      <input type="text" id="new-client-name" placeholder="Client name" />
+      <input type="email" id="new-client-email" placeholder="Client email" />
+      <input type="password" id="new-client-pw" placeholder="Temporary password" />
+      <p class="modal-error" id="client-error" style="display:none"></p>
+      <button class="btn-small" style="padding:0.7rem 1rem" onclick="addClient()">Create Client Account</button>
     </div>
   </div>
 </div>
@@ -563,17 +649,37 @@
   // ── Admin UI update (called by Firebase module) ──
   function updateAdminUI() {
     const isAdmin = window._isAdmin ? window._isAdmin() : false;
+    const isClient = window._isClient ? window._isClient() : false;
     const bar = document.getElementById('admin-bar');
-    const btn = document.getElementById('admin-nav-btn');
+    const adminBtn = document.getElementById('admin-nav-btn');
+    const clientBtn = document.getElementById('client-nav-btn');
+    const albumsLink = document.getElementById('albums-nav-link');
+
     if (isAdmin) {
       bar.classList.add('visible');
-      btn.textContent = 'Log Out';
-      btn.classList.add('active');
+      adminBtn.textContent = 'Log Out';
+      adminBtn.classList.add('active');
+      adminBtn.style.display = '';
+      clientBtn.style.display = 'none';
+      albumsLink.textContent = 'Albums';
+    } else if (isClient) {
+      bar.classList.remove('visible');
+      adminBtn.style.display = 'none';
+      clientBtn.textContent = 'Log Out';
+      clientBtn.classList.add('active');
+      clientBtn.style.display = '';
+      albumsLink.textContent = 'My Gallery';
     } else {
       bar.classList.remove('visible');
-      btn.textContent = 'Admin';
-      btn.classList.remove('active');
+      adminBtn.textContent = 'Admin';
+      adminBtn.classList.remove('active');
+      adminBtn.style.display = '';
+      clientBtn.textContent = 'Client Area';
+      clientBtn.classList.remove('active');
+      clientBtn.style.display = '';
+      albumsLink.textContent = 'Albums';
     }
+
     if (currentAlbum) {
       const view = document.getElementById('album-view');
       isAdmin ? view.classList.add('admin-mode') : view.classList.remove('admin-mode');
@@ -729,6 +835,12 @@
     openModal('login-modal');
     setTimeout(() => document.getElementById('login-email').focus(), 100);
   }
+  function handleClientClick() {
+    if (window._isClient && window._isClient()) { doLogout(); return; }
+    if (window._isAdmin && window._isAdmin()) return;
+    openModal('login-modal');
+    setTimeout(() => document.getElementById('login-email').focus(), 100);
+  }
   async function doLogin() {
     const email = document.getElementById('login-email').value;
     const pw    = document.getElementById('login-pw').value;
@@ -741,7 +853,12 @@
       closeModal('login-modal');
       document.getElementById('login-email').value = '';
       document.getElementById('login-pw').value = '';
-      toast('Welcome back, Mia ✦');
+      if (window._isClient && window._isClient()) {
+        showSection('albums');
+        toast('Welcome! Your gallery is ready.');
+      } else {
+        toast('Welcome back, Mia ✦');
+      }
     } catch(e) {
       err.style.display = 'block';
     }
@@ -750,6 +867,73 @@
   async function doLogout() {
     await window.firebase.logout();
     toast('Logged out');
+  }
+
+  // ── Manage clients ──
+  async function openManageClients() {
+    await renderClientList();
+    openModal('clients-modal');
+  }
+  async function renderClientList() {
+    const clients = await window.firebase.getClients();
+    const albums  = window._albums || [];
+    const el = document.getElementById('client-list');
+    if (!clients.length) {
+      el.innerHTML = '<li style="opacity:.5;font-size:.82rem;padding:.5rem 0">No clients yet</li>';
+      return;
+    }
+    el.innerHTML = clients.map(c => `
+      <li>
+        <div class="client-header">
+          <div>
+            <div class="client-name">${c.name}</div>
+            <div class="client-email">${c.email}</div>
+          </div>
+          <div class="client-actions">
+            <button onclick="removeClient('${c.uid}')">Remove</button>
+          </div>
+        </div>
+        <div class="album-checkboxes">
+          ${albums.length ? albums.map(a => `
+            <label>
+              <input type="checkbox" ${(c.allowedAlbums||[]).includes(a.id) ? 'checked' : ''}
+                onchange="toggleClientAlbum('${c.uid}', '${a.id}', this.checked)" />
+              ${a.name}
+            </label>`).join('') : '<span style="opacity:.5;font-size:.75rem">No albums yet</span>'}
+        </div>
+      </li>`).join('');
+  }
+  async function addClient() {
+    const name  = document.getElementById('new-client-name').value.trim();
+    const email = document.getElementById('new-client-email').value.trim();
+    const pw    = document.getElementById('new-client-pw').value;
+    const err   = document.getElementById('client-error');
+    err.style.display = 'none';
+    if (!name || !email || !pw) { err.textContent = 'All fields are required.'; err.style.display = 'block'; return; }
+    try {
+      await window.firebase.createClient(name, email, pw);
+      document.getElementById('new-client-name').value = '';
+      document.getElementById('new-client-email').value = '';
+      document.getElementById('new-client-pw').value = '';
+      await renderClientList();
+      toast(`Client "${name}" created`);
+    } catch(e) {
+      err.textContent = e.message;
+      err.style.display = 'block';
+    }
+  }
+  async function removeClient(uid) {
+    if (!confirm('Remove this client? They will no longer be able to log in.')) return;
+    await window.firebase.deleteClient(uid);
+    await renderClientList();
+    toast('Client removed');
+  }
+  async function toggleClientAlbum(uid, albumId, checked) {
+    if (checked) {
+      await window.firebase.assignAlbumToClient(uid, albumId);
+    } else {
+      await window.firebase.removeAlbumFromClient(uid, albumId);
+    }
   }
 
   // ── Contact form via EmailJS ──
