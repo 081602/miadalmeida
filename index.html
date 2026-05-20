@@ -45,11 +45,17 @@
 
     onAuthStateChanged(auth, async user => {
       if (user) {
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        if (snap.exists()) {
-          currentUserData = snap.data();
-          currentUserRole = currentUserData.role;
-        } else {
+        try {
+          const snap = await getDoc(doc(db, 'users', user.uid));
+          if (snap.exists()) {
+            currentUserData = snap.data();
+            currentUserRole = currentUserData.role;
+          } else {
+            currentUserRole = 'admin';
+            currentUserData = { role: 'admin' };
+          }
+        } catch(e) {
+          console.error('Role fetch failed:', e);
           currentUserRole = 'admin';
           currentUserData = { role: 'admin' };
         }
