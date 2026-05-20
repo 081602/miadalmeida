@@ -47,15 +47,15 @@
       if (user) {
         try {
           const snap = await getDoc(doc(db, 'users', user.uid));
-          if (snap.exists()) {
+          if (snap.exists() && snap.data().role === 'client') {
+            currentUserRole = 'client';
             currentUserData = snap.data();
-            currentUserRole = currentUserData.role;
           } else {
+            // No doc or non-client doc = admin
             currentUserRole = 'admin';
             currentUserData = { role: 'admin' };
           }
         } catch(e) {
-          console.error('Role fetch failed:', e);
           currentUserRole = 'admin';
           currentUserData = { role: 'admin' };
         }
