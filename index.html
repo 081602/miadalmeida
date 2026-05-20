@@ -968,7 +968,7 @@
   async function openClientAlbums(uid, name) {
     closeModal('clients-modal');
     currentClientContext = { uid, name };
-    document.getElementById(‘client-albums-title’).textContent = `${name}’s Albums`;
+    document.getElementById('client-albums-title').textContent = `${name}'s Albums`;
     await refreshClientAlbumsGrid();
     document.getElementById('client-albums-overlay').classList.add('open');
   }
