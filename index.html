@@ -671,6 +671,7 @@
   // ── State ──
   let currentAlbum = null;
   let lbIndex = 0;
+  let justLoggedIn = false;
 
   // ── Check config ──
   window.addEventListener('load', () => {
@@ -698,6 +699,7 @@
       adminBtn.style.display = '';
       clientBtn.style.display = 'none';
       albumsLink.textContent = 'Albums';
+      if (justLoggedIn) { toast('Welcome back, Mia ✦'); justLoggedIn = false; }
     } else if (isClient) {
       bar.classList.remove('visible');
       adminBtn.style.display = 'none';
@@ -705,6 +707,7 @@
       clientBtn.classList.add('active');
       clientBtn.style.display = '';
       albumsLink.textContent = 'My Gallery';
+      if (justLoggedIn) { showSection('albums'); toast('Welcome! Your gallery is ready.'); justLoggedIn = false; }
     } else {
       bar.classList.remove('visible');
       adminBtn.textContent = 'Admin';
@@ -897,12 +900,7 @@
       closeModal('login-modal');
       document.getElementById('login-email').value = '';
       document.getElementById('login-pw').value = '';
-      if (window._isClient && window._isClient()) {
-        showSection('albums');
-        toast('Welcome! Your gallery is ready.');
-      } else {
-        toast('Welcome back, Mia ✦');
-      }
+      justLoggedIn = true; // Welcome toast shown in updateAdminUI once role is confirmed
     } catch(e) {
       err.style.display = 'block';
     }
