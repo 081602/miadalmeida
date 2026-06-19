@@ -831,9 +831,18 @@
     const photos = currentAlbum ? (currentAlbum.photos || []) : [];
     if (!currentAlbum || !canDownload() || !photos.length) { actions.innerHTML = ''; return; }
     const n = selectedPhotos.size;
+    const allSelected = n === photos.length;
     actions.innerHTML = `
+      <button class="admin-action-btn" onclick="toggleSelectAll()">${allSelected ? 'Deselect All' : 'Select All'}</button>
       <button class="admin-action-btn" id="dl-selected-btn" onclick="downloadSelected()" ${n ? '' : 'disabled'}>Download Selected${n ? ` (${n})` : ''}</button>
       <button class="admin-action-btn" onclick="downloadAll()">Download All</button>`;
+  }
+
+  function toggleSelectAll() {
+    const photos = currentAlbum.photos || [];
+    if (selectedPhotos.size === photos.length) selectedPhotos.clear();
+    else selectedPhotos = new Set(photos.map((_, i) => i));
+    renderPhotosGrid();
   }
 
   function togglePhotoSelect(i, event) {
