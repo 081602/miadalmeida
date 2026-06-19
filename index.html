@@ -193,7 +193,8 @@
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
       display: flex; align-items: center; justify-content: space-between;
       padding: 1.4rem 3rem;
-      background: #eef0f0;
+      background: rgba(238,240,240,0.93);
+      backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--light-border);
     }
     .nav-logo {
@@ -234,7 +235,7 @@
     /* ── CLIENT ALBUMS OVERLAY ── */
     #client-albums-overlay {
       display: none; position: fixed; inset: 0;
-      background: var(--white); z-index: 600; overflow-y: auto; padding-top: 5rem;
+      background: var(--white); z-index: 600; overflow-y: auto;
     }
     #client-albums-overlay.open { display: block; }
     .client-albums-header {
@@ -319,7 +320,7 @@
     /* ── ALBUM VIEW ── */
     #album-view {
       display: none; position: fixed; inset: 0;
-      background: var(--white); z-index: 650; overflow-y: auto; padding-top: 5rem;
+      background: var(--white); z-index: 650; overflow-y: auto;
     }
     #album-view.open { display: block; }
     .album-view-header {
