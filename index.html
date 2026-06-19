@@ -486,6 +486,11 @@
     }
     .lb-prev { left: 1rem; } .lb-next { right: 1rem; }
     .lb-prev:hover, .lb-next:hover { color: white; }
+    .lb-counter {
+      position: absolute; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+      color: rgba(255,255,255,0.7); font-size: 0.78rem; letter-spacing: 0.18em;
+      font-family: 'Jost', sans-serif; pointer-events: none;
+    }
 
     /* ── SETUP BANNER ── */
     #setup-banner {
@@ -675,6 +680,7 @@
   <button class="lb-prev" onclick="lbNav(-1)">&#8249;</button>
   <img id="lightbox-img" src="" alt="" />
   <button class="lb-next" onclick="lbNav(1)">&#8250;</button>
+  <div class="lb-counter" id="lb-counter"></div>
 </div>
 
 <!-- TOAST -->
@@ -905,12 +911,18 @@
     lbIndex = index;
     document.getElementById('lightbox-img').src = currentAlbum.photos[index].url;
     document.getElementById('lightbox').classList.add('open');
+    updateLbCounter();
   }
   function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
   function lbNav(dir) {
     const photos = currentAlbum.photos || [];
     lbIndex = (lbIndex + dir + photos.length) % photos.length;
     document.getElementById('lightbox-img').src = photos[lbIndex].url;
+    updateLbCounter();
+  }
+  function updateLbCounter() {
+    const total = (currentAlbum.photos || []).length;
+    document.getElementById('lb-counter').textContent = `${lbIndex + 1} of ${total}`;
   }
   function downloadCurrent() {
     const photo = (currentAlbum.photos || [])[lbIndex];
