@@ -350,6 +350,19 @@
     }
     .admin-mode .photo-delete-btn { display: flex; }
 
+    /* ── PHOTO SELECT (client/admin download) ── */
+    .photo-select {
+      position: absolute; top: 0.5rem; left: 0.5rem;
+      width: 26px; height: 26px; border-radius: 50%;
+      background: rgba(255,255,255,0.85); border: 1px solid var(--light-border);
+      cursor: pointer; display: none; align-items: center; justify-content: center;
+      z-index: 5; padding: 0; color: transparent; transition: all 0.15s;
+    }
+    .download-mode .photo-select { display: flex; }
+    .photo-select svg { width: 16px; height: 16px; }
+    .photo-item.selected .photo-select { background: var(--accent); border-color: var(--accent); color: var(--white); }
+    .photo-item.selected { outline: 3px solid var(--accent); outline-offset: -3px; }
+
     .upload-zone {
       border: 2px dashed var(--light-border); aspect-ratio: 3/2;
       display: flex; flex-direction: column; align-items: center;
@@ -407,6 +420,10 @@
     .admin-action-btn:hover { background: var(--accent); border-color: var(--accent); }
     .admin-action-btn.danger { border-color: var(--red); }
     .admin-action-btn.danger:hover { background: var(--red); }
+    .admin-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .album-view-actions .admin-action-btn { color: var(--dark); border-color: var(--dark); }
+    .album-view-actions .admin-action-btn:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--white); }
+    .album-view-actions .admin-action-btn:disabled:hover { background: none; }
 
     /* ── MODALS ── */
     .modal-overlay {
@@ -456,6 +473,12 @@
     #lightbox img { max-width: 90vw; max-height: 90vh; object-fit: contain; }
     .lb-close { position: absolute; top: 1.5rem; right: 2rem; background: none; border: none; color: rgba(255,255,255,0.6); font-size: 2rem; cursor: pointer; }
     .lb-close:hover { color: white; }
+    .lb-download {
+      position: absolute; top: 1.6rem; right: 4.5rem; background: none; border: none;
+      color: rgba(255,255,255,0.6); cursor: pointer; padding: 0;
+      display: flex; align-items: center; justify-content: center; transition: color 0.2s;
+    }
+    .lb-download:hover { color: white; }
     .lb-prev, .lb-next {
       position: absolute; top: 50%; transform: translateY(-50%);
       background: none; border: none; color: rgba(255,255,255,0.5);
@@ -646,6 +669,9 @@
 <!-- LIGHTBOX -->
 <div id="lightbox">
   <button class="lb-close" onclick="closeLightbox()">&times;</button>
+  <button class="lb-download" onclick="downloadCurrent()" title="Download this photo">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+  </button>
   <button class="lb-prev" onclick="lbNav(-1)">&#8249;</button>
   <img id="lightbox-img" src="" alt="" />
   <button class="lb-next" onclick="lbNav(1)">&#8250;</button>
@@ -672,6 +698,12 @@
   let currentAlbum = null;
   let lbIndex = 0;
   let justLoggedIn = false;
+  let selectedPhotos = new Set();
+
+  // Clients (and admins) may download; anonymous portfolio visitors may not.
+  function canDownload() {
+    return (window._isClient && window._isClient()) || (window._isAdmin && window._isAdmin());
+  }
 
   // ── Check config ──
   window.addEventListener('load', () => {
@@ -757,6 +789,7 @@
     const albums = window._albums || [];
     currentAlbum = albums.find(a => a.id === albumId);
     if (!currentAlbum) return;
+    selectedPhotos.clear();
     document.getElementById('album-view-title').textContent = currentAlbum.name;
     const view = document.getElementById('album-view');
     view.classList.add('open');
@@ -767,11 +800,16 @@
   function renderPhotosGrid() {
     const grid = document.getElementById('photos-grid');
     const isAdmin = window._isAdmin && window._isAdmin();
+    const view = document.getElementById('album-view');
+    canDownload() ? view.classList.add('download-mode') : view.classList.remove('download-mode');
     const photos = currentAlbum.photos || [];
 
     let html = photos.map((photo, i) => `
-      <div class="photo-item">
+      <div class="photo-item ${selectedPhotos.has(i) ? 'selected' : ''}">
         <img src="${photo.url}" alt="${photo.name}" loading="lazy" onclick="openLightbox(${i})" />
+        <button class="photo-select" onclick="togglePhotoSelect(${i}, event)" title="Select for download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </button>
         <button class="photo-delete-btn" onclick="removePhoto(${i})" title="Delete">&#x2715;</button>
       </div>`).join('');
 
@@ -783,10 +821,30 @@
       </label>`;
     }
     grid.innerHTML = html;
+    renderAlbumActions();
+  }
+
+  // ── Download controls in album header ──
+  function renderAlbumActions() {
+    const actions = document.getElementById('album-view-actions');
+    if (!actions) return;
+    const photos = currentAlbum ? (currentAlbum.photos || []) : [];
+    if (!currentAlbum || !canDownload() || !photos.length) { actions.innerHTML = ''; return; }
+    const n = selectedPhotos.size;
+    actions.innerHTML = `
+      <button class="admin-action-btn" id="dl-selected-btn" onclick="downloadSelected()" ${n ? '' : 'disabled'}>Download Selected${n ? ` (${n})` : ''}</button>
+      <button class="admin-action-btn" onclick="downloadAll()">Download All</button>`;
+  }
+
+  function togglePhotoSelect(i, event) {
+    event.stopPropagation();
+    if (selectedPhotos.has(i)) selectedPhotos.delete(i); else selectedPhotos.add(i);
+    renderPhotosGrid();
   }
 
   function closeAlbumView() {
-    document.getElementById('album-view').classList.remove('open', 'admin-mode');
+    document.getElementById('album-view').classList.remove('open', 'admin-mode', 'download-mode');
+    selectedPhotos.clear();
     currentAlbum = null;
     if (currentClientContext) refreshClientAlbumsGrid();
   }
@@ -844,6 +902,82 @@
     const photos = currentAlbum.photos || [];
     lbIndex = (lbIndex + dir + photos.length) % photos.length;
     document.getElementById('lightbox-img').src = photos[lbIndex].url;
+  }
+  function downloadCurrent() {
+    const photo = (currentAlbum.photos || [])[lbIndex];
+    if (photo) downloadPhotos([photo], currentAlbum.name);
+  }
+
+  // ── Download (single → file, multiple → zip) ──
+  async function downloadAll() {
+    await downloadPhotos(currentAlbum.photos || [], currentAlbum.name);
+  }
+  async function downloadSelected() {
+    if (!selectedPhotos.size) return;
+    const photos = currentAlbum.photos || [];
+    const chosen = [...selectedPhotos].sort((a, b) => a - b).map(i => photos[i]).filter(Boolean);
+    await downloadPhotos(chosen, currentAlbum.name + '-selected');
+  }
+
+  async function downloadPhotos(photos, baseName) {
+    if (!photos || !photos.length) return;
+    if (photos.length === 1) { await downloadSingle(photos[0]); return; }
+    toast(`Preparing ${photos.length} photos…`);
+    try {
+      await ensureJSZip();
+      const zip = new JSZip();
+      const used = {};
+      for (const photo of photos) {
+        const resp = await fetch(photo.url);
+        if (!resp.ok) throw new Error('fetch ' + resp.status);
+        let fname = photo.name || 'photo.jpg';
+        if (used[fname]) {
+          const n = ++used[fname];
+          const dot = fname.lastIndexOf('.');
+          fname = dot > 0 ? `${fname.slice(0, dot)}-${n}${fname.slice(dot)}` : `${fname}-${n}`;
+        } else { used[fname] = 1; }
+        zip.file(fname, await resp.blob());
+      }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      triggerDownload(URL.createObjectURL(blob), sanitizeName(baseName) + '.zip');
+      toast('Download ready');
+    } catch (e) {
+      console.error('Download failed', e);
+      toast('Download failed — Storage CORS may need configuring');
+    }
+  }
+
+  async function downloadSingle(photo) {
+    try {
+      const resp = await fetch(photo.url);
+      if (!resp.ok) throw new Error('fetch ' + resp.status);
+      triggerDownload(URL.createObjectURL(await resp.blob()), photo.name || 'photo.jpg');
+    } catch (e) {
+      console.error('Download failed, opening in new tab', e);
+      window.open(photo.url, '_blank'); // fallback when CORS blocks fetch
+    }
+  }
+
+  function triggerDownload(href, filename) {
+    const a = document.createElement('a');
+    a.href = href; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 5000);
+  }
+
+  function sanitizeName(s) {
+    return (s || 'album').toLowerCase().replace(/[^a-z0-9-_]+/g, '-').replace(/^-+|-+$/g, '') || 'album';
+  }
+
+  function ensureJSZip() {
+    if (window.JSZip) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Could not load JSZip'));
+      document.head.appendChild(s);
+    });
   }
 
   // ── Manage albums ──
@@ -997,6 +1131,7 @@
     window.firebase.loadClientAlbums(currentClientContext.uid).then(albums => {
       currentAlbum = albums.find(a => a.id === albumId);
       if (!currentAlbum) return;
+      selectedPhotos.clear();
       document.getElementById('album-view-title').textContent = currentAlbum.name;
       const view = document.getElementById('album-view');
       view.classList.add('open', 'admin-mode');
