@@ -413,6 +413,9 @@
       letter-spacing: 0.15em; text-transform: uppercase; color: var(--mid); transition: color 0.2s;
     }
     .back-btn:hover { color: var(--dark); }
+    /* In nav-mode the view must sit below the nav (z 100) so nav dropdowns
+       (e.g. the client album picker) can open above it */
+    #album-view.nav-mode { z-index: 90; }
     #album-view.nav-mode .back-btn { display: none; } /* nav is visible — no Back needed */
     #album-view.nav-mode .album-view-title { display: none; } /* underlined nav item names the album */
     /* nothing left in the header (public visitor) → hide the whole bar */
