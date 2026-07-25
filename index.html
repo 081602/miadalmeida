@@ -134,6 +134,10 @@
       await updateDoc(doc(db, "albums", albumId), { photos: arrayRemove(photo) });
     }
 
+    async function savePhotoOrder(albumId, photos) {
+      await updateDoc(doc(db, "albums", albumId), { photos });
+    }
+
     // ── Client management ──
     async function createClient(name, email, password) {
       const resp = await fetch(
@@ -159,7 +163,7 @@
     }
 
     // Expose to window for HTML event handlers
-    window.firebase = { login, logout, loadAlbums, loadClientAlbums, createAlbum, deleteAlbum, uploadPhoto, deletePhoto, createClient, getClients, deleteClient };
+    window.firebase = { login, logout, loadAlbums, loadClientAlbums, createAlbum, deleteAlbum, uploadPhoto, deletePhoto, savePhotoOrder, createClient, getClients, deleteClient };
     window._isAdmin = () => isAdmin;
     window._isClient = () => currentUserRole === 'client';
     window._clientData = () => currentUserData;
@@ -424,6 +428,12 @@
     .photo-select svg { width: 16px; height: 16px; }
     .photo-item.selected .photo-select { background: var(--accent); border-color: var(--accent); color: var(--white); }
     .photo-item.selected { outline: 3px solid var(--accent); outline-offset: -3px; }
+    /* admin drag-to-reorder */
+    .admin-mode .photo-item { cursor: grab; }
+    .admin-mode .photo-item:active { cursor: grabbing; }
+    .photo-item.dragging { opacity: 0.35; }
+    .photo-item.drag-over { outline: 3px dashed var(--accent); outline-offset: -3px; }
+    .photo-item.drag-over img { transform: none; }
 
     .upload-zone {
       border: 2px dashed var(--light-border); aspect-ratio: 3/2;
@@ -945,8 +955,11 @@
     canDownload() ? view.classList.add('download-mode') : view.classList.remove('download-mode');
     const photos = currentAlbum.photos || [];
 
+    const dragAttrs = i => isAdmin
+      ? ` draggable="true" data-index="${i}" ondragstart="photoDragStart(event, ${i})" ondragover="photoDragOver(event, ${i})" ondragleave="photoDragLeave(event)" ondrop="photoDrop(event, ${i})" ondragend="photoDragEnd(event)"`
+      : '';
     let html = photos.map((photo, i) => `
-      <div class="photo-item ${selectedPhotos.has(i) ? 'selected' : ''}">
+      <div class="photo-item ${selectedPhotos.has(i) ? 'selected' : ''}"${dragAttrs(i)}>
         <img src="${photo.url}" alt="${photo.name}" loading="lazy" onclick="openLightbox(${i})" />
         <button class="photo-select" onclick="togglePhotoSelect(${i}, event)" title="Select for download">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -963,6 +976,45 @@
     }
     grid.innerHTML = html;
     renderAlbumActions();
+  }
+
+  // ── Admin: drag-and-drop photo reordering ──
+  let dragSrcIndex = null;
+
+  function photoDragStart(e, i) {
+    dragSrcIndex = i;
+    e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.classList.add('dragging');
+  }
+  function photoDragOver(e, i) {
+    e.preventDefault(); // required to allow dropping
+    e.dataTransfer.dropEffect = 'move';
+    if (i !== dragSrcIndex) e.currentTarget.classList.add('drag-over');
+  }
+  function photoDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+  }
+  function photoDragEnd(e) {
+    e.currentTarget.classList.remove('dragging');
+    document.querySelectorAll('#photos-grid .drag-over').forEach(el => el.classList.remove('drag-over'));
+  }
+  async function photoDrop(e, targetIndex) {
+    e.preventDefault();
+    if (dragSrcIndex === null || dragSrcIndex === targetIndex) return;
+    const photos = currentAlbum.photos || [];
+    const [moved] = photos.splice(dragSrcIndex, 1);
+    photos.splice(targetIndex, 0, moved);
+    dragSrcIndex = null;
+    selectedPhotos.clear(); // indices shifted; drop any selection
+    renderPhotosGrid();
+    try {
+      await window.firebase.savePhotoOrder(currentAlbum.id, photos);
+      toast('Photo order saved');
+    } catch(err) {
+      toast('Could not save order — reloading');
+      await window.firebase.loadAlbums();
+      renderPhotosGrid();
+    }
   }
 
   // ── Download controls in album header ──
