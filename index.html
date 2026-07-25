@@ -218,6 +218,26 @@
     .nav-admin-btn:hover, .nav-admin-btn.active,
     .nav-client-btn:hover, .nav-client-btn.active { background: var(--accent); color: var(--white); }
 
+    /* ── MOBILE HAMBURGER ── */
+    .nav-toggle {
+      display: none; background: none; border: none; cursor: pointer;
+      padding: 0.4rem; color: var(--dark); line-height: 0;
+    }
+    .nav-toggle .icon-close { display: none; }
+    nav.menu-open .nav-toggle .icon-burger { display: none; }
+    nav.menu-open .nav-toggle .icon-close { display: block; }
+    @media (max-width: 768px) {
+      .nav-toggle { display: block; }
+      .nav-links {
+        display: none; position: absolute; top: 100%; left: 0; right: 0;
+        flex-direction: column; align-items: flex-start; gap: 1.2rem;
+        padding: 1.4rem 1.5rem 1.8rem;
+        background: rgba(238,240,240,0.98); backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--light-border);
+      }
+      nav.menu-open .nav-links { display: flex; }
+    }
+
     /* ── MANAGE CLIENTS ── */
     .client-list-manage { list-style: none; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.8rem; max-height: 280px; overflow-y: auto; }
     .client-list-manage li { border: 1px solid var(--light-border); padding: 0.8rem 1rem; font-size: 0.85rem; }
@@ -293,7 +313,7 @@
     .section-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 300; margin-bottom: 3rem; }
 
     /* ── ALBUMS GRID ── */
-    #albums { background: var(--white); }
+    #albums { background: var(--white); padding-top: 3rem; }
     .albums-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; max-width: 1200px; margin: 0 auto; }
     .album-card { position: relative; aspect-ratio: 4/3; overflow: hidden; cursor: pointer; background: var(--light-border); }
     .album-card img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s; display: block; }
@@ -316,6 +336,48 @@
       background-size: 200% 100%; animation: shimmer 1.5s infinite;
     }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* ── IMAGE-FORWARD GALLERY ── */
+    .gallery-wrap { max-width: 1500px; margin: 0 auto; }
+    .gallery-album { margin: 0 auto 4.5rem; scroll-margin-top: 130px; }
+    .gallery-album:last-child { margin-bottom: 0; }
+    .gallery-head {
+      display: flex; align-items: baseline; gap: 1rem;
+      margin-bottom: 1.4rem; padding-bottom: 0.7rem;
+      border-bottom: 1px solid var(--light-border);
+    }
+    .gallery-head h3 {
+      font-family: 'Cormorant Garamond', serif; font-weight: 300;
+      font-size: clamp(1.5rem, 3vw, 2.3rem); color: var(--dark); line-height: 1;
+    }
+    .gallery-count { font-size: 0.66rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--mid); }
+    .gallery-manage {
+      margin-left: auto; font-size: 0.66rem; letter-spacing: 0.15em; text-transform: uppercase;
+      color: var(--accent); cursor: pointer; background: none; border: none; font-family: 'Jost', sans-serif;
+      transition: color 0.2s;
+    }
+    .gallery-manage:hover { color: var(--dark); }
+    .masonry { column-count: 3; column-gap: 14px; }
+    .masonry img {
+      width: 100%; margin: 0 0 14px; display: block; break-inside: avoid;
+      cursor: pointer; background: var(--light-border);
+    }
+    .masonry img:hover { opacity: 0.92; }
+    .gallery-empty { color: var(--mid); font-size: 0.82rem; letter-spacing: 0.08em; padding: 1rem 0; }
+    @media (max-width: 900px) { .masonry { column-count: 2; } }
+    @media (max-width: 560px) { .masonry { column-count: 1; } }
+
+    /* reveal-on-scroll */
+    .reveal { opacity: 0; transform: translateY(26px); transition: opacity 0.9s ease, transform 0.9s ease; }
+    .reveal.visible { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { opacity: 1; transform: none; transition: none; }
+    }
+
+    /* nav category links */
+    .nav-links { flex-wrap: wrap; justify-content: flex-end; }
+    .nav-links a.nav-cat { color: var(--mid); }
+    .nav-links a.nav-cat:hover { color: var(--dark); }
 
     /* ── ALBUM VIEW ── */
     #album-view {
@@ -529,12 +591,16 @@
 <!-- NAV -->
 <nav>
   <span class="nav-logo" onclick="showSection('hero')">Mia <span>Sibley</span></span>
+  <button class="nav-toggle" aria-label="Menu" onclick="toggleNavMenu()">
+    <svg class="icon-burger" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
   <ul class="nav-links">
     <li><a onclick="showSection('hero')">Home</a></li>
-    <li><a id="albums-nav-link" onclick="showSection('albums')">Albums</a></li>
+    <li id="albums-nav-item" style="display:none"><a id="albums-nav-link" onclick="showSection('albums')">Albums</a></li>
+    <span id="nav-categories" style="display:contents"></span>
     <li><a onclick="showSection('contact')">Contact</a></li>
-    <li><button class="nav-client-btn" id="client-nav-btn" onclick="handleClientClick()">Client Area</button></li>
-    <li><button class="nav-admin-btn" id="admin-nav-btn" onclick="handleAdminClick()">Admin</button></li>
+    <li><button class="nav-admin-btn" id="login-nav-btn" onclick="handleLoginClick()">Login</button></li>
   </ul>
 </nav>
 
@@ -551,8 +617,6 @@
 
 <!-- ALBUMS -->
 <section id="albums">
-  <p class="section-label">Portfolio</p>
-  <h2 class="section-title">Albums</h2>
   <div class="albums-grid" id="albums-grid">
     <!-- shimmer placeholders -->
     <div class="album-card loading-shimmer"></div>
@@ -605,8 +669,8 @@
 <div class="modal-overlay" id="login-modal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('login-modal')">&times;</button>
-    <h2>Admin Login</h2>
-    <p>Sign in with your Firebase credentials to manage photos and albums.</p>
+    <h2>Login</h2>
+    <p>Sign in with your email and password.</p>
     <input type="email" id="login-email" placeholder="Email address" />
     <input type="password" id="login-pw" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
     <p class="modal-error" id="login-error">Incorrect email or password.</p>
@@ -726,35 +790,29 @@
     const isAdmin = window._isAdmin ? window._isAdmin() : false;
     const isClient = window._isClient ? window._isClient() : false;
     const bar = document.getElementById('admin-bar');
-    const adminBtn = document.getElementById('admin-nav-btn');
-    const clientBtn = document.getElementById('client-nav-btn');
+    const loginBtn = document.getElementById('login-nav-btn');
+    const albumsItem = document.getElementById('albums-nav-item');
     const albumsLink = document.getElementById('albums-nav-link');
+
+    // "Albums" is redundant for public/admin (categories are in the nav);
+    // clients get it as "My Gallery" — their way to their private photos.
+    albumsItem.style.display = isClient ? '' : 'none';
 
     if (isAdmin) {
       bar.classList.add('visible');
-      adminBtn.textContent = 'Log Out';
-      adminBtn.classList.add('active');
-      adminBtn.style.display = '';
-      clientBtn.style.display = 'none';
-      albumsLink.textContent = 'Albums';
+      loginBtn.textContent = 'Log Out';
+      loginBtn.classList.add('active');
       if (justLoggedIn) { toast('Welcome back, Mia ✦'); justLoggedIn = false; }
     } else if (isClient) {
       bar.classList.remove('visible');
-      adminBtn.style.display = 'none';
-      clientBtn.textContent = 'Log Out';
-      clientBtn.classList.add('active');
-      clientBtn.style.display = '';
+      loginBtn.textContent = 'Log Out';
+      loginBtn.classList.add('active');
       albumsLink.textContent = 'My Gallery';
       if (justLoggedIn) { showSection('albums'); toast('Welcome! Your gallery is ready.'); justLoggedIn = false; }
     } else {
       bar.classList.remove('visible');
-      adminBtn.textContent = 'Admin';
-      adminBtn.classList.remove('active');
-      adminBtn.style.display = '';
-      clientBtn.textContent = 'Client Area';
-      clientBtn.classList.remove('active');
-      clientBtn.style.display = '';
-      albumsLink.textContent = 'Albums';
+      loginBtn.textContent = 'Login';
+      loginBtn.classList.remove('active');
     }
 
     if (currentAlbum) {
@@ -764,30 +822,107 @@
     }
   }
 
-  // ── Render albums grid ──
+  // ── Homepage album: name it "Overview" (case flexible) ──
+  function isFrontPageAlbum(a) { return /^overview$/i.test((a.name || '').trim()); }
+
+  // ── Render image-forward galleries ──
   function renderAlbums() {
     const albums = window._albums || [];
     const grid = document.getElementById('albums-grid');
-    if (albums.length === 0) {
-      grid.innerHTML = `<p style="color:var(--mid);font-size:0.88rem;letter-spacing:0.08em;grid-column:1/-1">No albums yet. Log in as admin to add albums.</p>`;
+    const admin = window._isAdmin && window._isAdmin();
+    const isClient = window._isClient && window._isClient();
+
+    // Clients: show each of their albums as its own gallery section
+    if (isClient) {
+      renderNavCategories(albums, 'scroll');
+      grid.className = 'gallery-wrap';
+      grid.innerHTML = albums.map(album => galleryAlbumSection(album, admin)).join('') ||
+        `<p class="gallery-empty" style="text-align:center">No albums yet.</p>`;
+      observeReveals();
       return;
     }
-    grid.innerHTML = albums.map(album => {
-      const cover = album.photos && album.photos[0];
-      return `<div class="album-card" onclick="openAlbum('${album.id}')">
-        ${cover
-          ? `<img src="${cover.url}" alt="${album.name}" loading="lazy" />`
-          : `<div class="album-placeholder">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="1"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-              No photos yet
-            </div>`
-        }
-        <div class="album-name-bar">
-          <span>${album.name}</span>
-          <span class="album-count">${(album.photos || []).length} photo${(album.photos||[]).length !== 1 ? 's' : ''}</span>
-        </div>
-      </div>`;
-    }).join('');
+
+    // Public/admin: homepage = "Front Page" album; other albums live in the nav
+    const front = albums.find(isFrontPageAlbum);
+    const categories = albums.filter(a => !isFrontPageAlbum(a));
+    renderNavCategories(categories, 'open');
+    grid.className = 'gallery-wrap';
+
+    if (!front) {
+      grid.innerHTML = `<p class="gallery-empty" style="text-align:center">${admin
+        ? 'Create an album named &ldquo;Overview&rdquo; (Manage Albums) and add photos to it &mdash; they will appear here.'
+        : ''}</p>`;
+      return;
+    }
+    const photos = front.photos || [];
+    const manageBtn = admin
+      ? `<div style="text-align:right;margin-bottom:1rem"><button class="gallery-manage" onclick="openAlbum('${front.id}')">Manage Overview &#9656;</button></div>` : '';
+    grid.innerHTML = manageBtn + (photos.length
+      ? `<div class="masonry">${photos.map((p, i) =>
+          `<img class="reveal" src="${p.url}" alt="Mia Sibley photography" loading="lazy" onclick="openAlbumPhoto('${front.id}', ${i})" />`
+        ).join('')}</div>`
+      : `<p class="gallery-empty" style="text-align:center">${admin ? 'The Overview album is empty &mdash; add photos to fill the homepage.' : ''}</p>`);
+    observeReveals();
+  }
+
+  // One album rendered as a full gallery section (used for client galleries)
+  function galleryAlbumSection(album, admin) {
+    const photos = album.photos || [];
+    const count = photos.length;
+    const manageBtn = admin
+      ? `<button class="gallery-manage" onclick="openAlbum('${album.id}')">Manage &#9656;</button>` : '';
+    const body = count
+      ? `<div class="masonry">${photos.map((p, i) =>
+          `<img class="reveal" src="${p.url}" alt="${album.name}" loading="lazy" onclick="openAlbumPhoto('${album.id}', ${i})" />`
+        ).join('')}</div>`
+      : `<p class="gallery-empty">No photos yet.</p>`;
+    return `<section class="gallery-album" id="album-${album.id}">
+      <div class="gallery-head">
+        <h3>${album.name}</h3>
+        <span class="gallery-count">${count} photo${count !== 1 ? 's' : ''}</span>
+        ${manageBtn}
+      </div>
+      ${body}
+    </section>`;
+  }
+
+  // ── Populate album categories in the top nav ──
+  // mode 'open'  → clicking opens the album's full gallery view
+  // mode 'scroll'→ clicking scrolls to the album section on the page
+  function renderNavCategories(albums, mode) {
+    const box = document.getElementById('nav-categories');
+    if (!box) return;
+    box.innerHTML = albums.map(a =>
+      `<li><a class="nav-cat" onclick="${mode === 'open' ? `openAlbum('${a.id}')` : `scrollToAlbum('${a.id}')`}">${a.name}</a></li>`
+    ).join('');
+  }
+
+  function scrollToAlbum(id) {
+    const el = document.getElementById('album-' + id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Open a photo from the homepage galleries in the lightbox
+  function openAlbumPhoto(albumId, index) {
+    const albums = window._albums || [];
+    currentAlbum = albums.find(a => a.id === albumId);
+    if (!currentAlbum) return;
+    openLightbox(index);
+  }
+
+  // ── Reveal-on-scroll ──
+  const revealObserver = ('IntersectionObserver' in window)
+    ? new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) { e.target.classList.add('visible'); revealObserver.unobserve(e.target); }
+        });
+      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.04 })
+    : null;
+
+  function observeReveals() {
+    const els = document.querySelectorAll('#albums-grid .reveal:not(.visible)');
+    if (!revealObserver) { els.forEach(el => el.classList.add('visible')); return; }
+    els.forEach(el => revealObserver.observe(el));
   }
 
   // ── Open album ──
@@ -1034,15 +1169,18 @@
     renderManageList();
   }
 
+  // ── Mobile nav menu ──
+  function toggleNavMenu() { document.querySelector('nav').classList.toggle('menu-open'); }
+  function closeNavMenu() { document.querySelector('nav').classList.remove('menu-open'); }
+  // Close the menu whenever a link or button inside it is tapped
+  document.querySelector('.nav-links').addEventListener('click', e => {
+    if (e.target.closest('a, button')) closeNavMenu();
+  });
+
   // ── Auth ──
-  function handleAdminClick() {
-    if (window._isAdmin && window._isAdmin()) { doLogout(); return; }
-    openModal('login-modal');
-    setTimeout(() => document.getElementById('login-email').focus(), 100);
-  }
-  function handleClientClick() {
-    if (window._isClient && window._isClient()) { doLogout(); return; }
-    if (window._isAdmin && window._isAdmin()) return;
+  function handleLoginClick() {
+    const loggedIn = (window._isAdmin && window._isAdmin()) || (window._isClient && window._isClient());
+    if (loggedIn) { doLogout(); return; }
     openModal('login-modal');
     setTimeout(() => document.getElementById('login-email').focus(), 100);
   }
