@@ -404,10 +404,13 @@
     .album-view-title { font-family: 'Cormorant Garamond', serif; font-size: 1.8rem; font-weight: 300; }
     .album-view-actions { margin-left: auto; display: flex; gap: 0.8rem; }
 
-    .photos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; padding: 2rem 3rem; }
-    .photo-item { position: relative; aspect-ratio: 3/2; overflow: hidden; background: var(--light-border); }
-    .photo-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s; display: block; cursor: pointer; }
-    .photo-item:hover img { transform: scale(1.04); }
+    /* Masonry: photos keep their natural aspect ratio */
+    .photos-grid { column-count: 3; column-gap: 14px; padding: 2rem 3rem; max-width: 1500px; margin: 0 auto; }
+    .photo-item { position: relative; overflow: hidden; background: var(--light-border); break-inside: avoid; margin-bottom: 14px; }
+    .photo-item img { width: 100%; height: auto; display: block; cursor: pointer; }
+    .photo-item:hover img { opacity: 0.92; }
+    @media (max-width: 900px) { .photos-grid { column-count: 2; } }
+    @media (max-width: 560px) { .photos-grid { column-count: 1; } }
     .photo-delete-btn {
       position: absolute; top: 0.5rem; right: 0.5rem;
       background: rgba(192,57,43,0.9); color: white; border: none;
@@ -437,6 +440,7 @@
 
     .upload-zone {
       border: 2px dashed var(--light-border); aspect-ratio: 3/2;
+      break-inside: avoid; margin-bottom: 14px;
       display: flex; flex-direction: column; align-items: center;
       justify-content: center; gap: 0.5rem; cursor: pointer;
       transition: border-color 0.2s; font-size: 0.78rem; color: var(--mid); letter-spacing: 0.08em;
