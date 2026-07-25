@@ -380,8 +380,9 @@
 
     /* nav category links */
     .nav-links { flex-wrap: wrap; justify-content: flex-end; }
-    .nav-links a.nav-cat { color: var(--mid); }
+    .nav-links a.nav-cat { color: var(--mid); padding-bottom: 3px; border-bottom: 1px solid transparent; }
     .nav-links a.nav-cat:hover { color: var(--dark); }
+    .nav-links a.nav-cat.active { color: var(--dark); border-bottom-color: var(--accent); }
 
     /* ── ALBUM VIEW ── */
     #album-view {
@@ -401,6 +402,10 @@
       letter-spacing: 0.15em; text-transform: uppercase; color: var(--mid); transition: color 0.2s;
     }
     .back-btn:hover { color: var(--dark); }
+    #album-view.nav-mode .back-btn { display: none; } /* nav is visible — no Back needed */
+    #album-view.nav-mode .album-view-title { display: none; } /* underlined nav item names the album */
+    /* nothing left in the header (public visitor) → hide the whole bar */
+    #album-view.nav-mode .album-view-header:has(.album-view-actions:empty) { display: none; }
     .album-view-title { font-family: 'Cormorant Garamond', serif; font-size: 1.8rem; font-weight: 300; }
     .album-view-actions { margin-left: auto; display: flex; gap: 0.8rem; }
 
@@ -907,7 +912,7 @@
     const box = document.getElementById('nav-categories');
     if (!box) return;
     box.innerHTML = albums.map(a =>
-      `<li><a class="nav-cat" onclick="${mode === 'open' ? `openAlbum('${a.id}')` : `scrollToAlbum('${a.id}')`}">${a.name}</a></li>`
+      `<li><a class="nav-cat" data-album-id="${a.id}" onclick="${mode === 'open' ? `openAlbum('${a.id}')` : `scrollToAlbum('${a.id}')`}">${a.name}</a></li>`
     ).join('');
   }
 
@@ -947,10 +952,27 @@
     selectedPhotos.clear();
     document.getElementById('album-view-title').textContent = currentAlbum.name;
     const view = document.getElementById('album-view');
-    view.classList.add('open');
+    // Start the overlay below the nav so the nav stays visible and usable
+    view.style.top = document.querySelector('nav').offsetHeight + 'px';
+    view.scrollTop = 0;
+    view.classList.add('open', 'nav-mode'); // nav-mode: nav is visible, hide the Back button
     if (window._isAdmin && window._isAdmin()) view.classList.add('admin-mode');
+    setActiveNavCategory(albumId);
     renderPhotosGrid();
   }
+
+  // Underline the nav category for the album being viewed (null clears)
+  function setActiveNavCategory(albumId) {
+    document.querySelectorAll('#nav-categories a.nav-cat').forEach(a =>
+      a.classList.toggle('active', a.dataset.albumId === albumId));
+  }
+
+  // Keep the overlay aligned with the nav if the window is resized
+  window.addEventListener('resize', () => {
+    const view = document.getElementById('album-view');
+    if (view.classList.contains('open') && view.style.top && view.style.top !== '0px')
+      view.style.top = document.querySelector('nav').offsetHeight + 'px';
+  });
 
   function renderPhotosGrid() {
     const grid = document.getElementById('photos-grid');
@@ -1049,7 +1071,10 @@
   }
 
   function closeAlbumView() {
-    document.getElementById('album-view').classList.remove('open', 'admin-mode', 'download-mode');
+    const view = document.getElementById('album-view');
+    view.classList.remove('open', 'admin-mode', 'download-mode', 'nav-mode');
+    view.style.top = '';
+    setActiveNavCategory(null);
     selectedPhotos.clear();
     currentAlbum = null;
     if (currentClientContext) refreshClientAlbumsGrid();
@@ -1352,6 +1377,8 @@
       selectedPhotos.clear();
       document.getElementById('album-view-title').textContent = currentAlbum.name;
       const view = document.getElementById('album-view');
+      view.style.top = '0px'; // admin flow: cover the client-albums overlay fully
+      view.scrollTop = 0;
       view.classList.add('open', 'admin-mode');
       renderPhotosGrid();
     });
@@ -1403,7 +1430,10 @@
     el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }));
 
   // ── Nav ──
-  function showSection(id) { document.getElementById(id).scrollIntoView({ behavior: 'smooth' }); }
+  function showSection(id) {
+    if (document.getElementById('album-view').classList.contains('open')) closeAlbumView();
+    document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+  }
 
   // ── Keys ──
   document.addEventListener('keydown', e => {
