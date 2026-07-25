@@ -316,8 +316,9 @@
       font-size: clamp(1.5rem, 3vw, 2.3rem); color: var(--dark); line-height: 1;
     }
     .gallery-count { font-size: 0.66rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--mid); }
+    .gallery-head-actions { margin-left: auto; display: flex; gap: 1.6rem; align-items: baseline; }
     .gallery-manage {
-      margin-left: auto; font-size: 0.66rem; letter-spacing: 0.15em; text-transform: uppercase;
+      font-size: 0.66rem; letter-spacing: 0.15em; text-transform: uppercase;
       color: var(--accent); cursor: pointer; background: none; border: none; font-family: 'Jost', sans-serif;
       transition: color 0.2s;
     }
@@ -623,7 +624,6 @@
   </button>
   <ul class="nav-links">
     <li><a onclick="showSection('albums')">Home</a></li>
-    <li id="albums-nav-item" style="display:none"><a id="albums-nav-link" onclick="showSection('albums')">Albums</a></li>
     <span id="nav-categories" style="display:contents"></span>
     <li><a onclick="showSection('info')">Info</a></li>
     <li><button class="nav-admin-btn" id="login-nav-btn" onclick="handleLoginClick()">Login</button></li>
@@ -810,12 +810,6 @@
     const isClient = window._isClient ? window._isClient() : false;
     const bar = document.getElementById('admin-bar');
     const loginBtn = document.getElementById('login-nav-btn');
-    const albumsItem = document.getElementById('albums-nav-item');
-    const albumsLink = document.getElementById('albums-nav-link');
-
-    // "Albums" is redundant for public/admin (categories are in the nav);
-    // clients get it as "My Gallery" — their way to their private photos.
-    albumsItem.style.display = isClient ? '' : 'none';
 
     if (isAdmin) {
       bar.classList.add('visible');
@@ -826,7 +820,6 @@
       bar.classList.remove('visible');
       loginBtn.textContent = 'Log Out';
       loginBtn.classList.add('active');
-      albumsLink.textContent = 'My Gallery';
       if (justLoggedIn) { showSection('albums'); toast('Welcome! Your gallery is ready.'); justLoggedIn = false; }
     } else {
       bar.classList.remove('visible');
@@ -853,7 +846,7 @@
 
     // Clients: show each of their albums as its own gallery section
     if (isClient) {
-      renderNavCategories(albums, 'scroll');
+      renderNavCategories(albums, 'open'); // album view has the select/download controls
       grid.className = 'gallery-wrap';
       grid.innerHTML = albums.map(album => galleryAlbumSection(album, admin)).join('') ||
         `<p class="gallery-empty" style="text-align:center">No albums yet.</p>`;
@@ -888,8 +881,16 @@
   function galleryAlbumSection(album, admin) {
     const photos = album.photos || [];
     const count = photos.length;
-    const manageBtn = admin
-      ? `<button class="gallery-manage" onclick="openAlbum('${album.id}')">Manage &#9656;</button>` : '';
+    let actions = '';
+    if (admin) {
+      actions = `<span class="gallery-head-actions"><button class="gallery-manage" onclick="openAlbum('${album.id}')">Manage &#9656;</button></span>`;
+    } else if (canDownload() && count) {
+      actions = `<span class="gallery-head-actions">
+        <button class="gallery-manage" onclick="openAlbum('${album.id}')">Select Photos &#9656;</button>
+        <button class="gallery-manage" onclick="downloadAlbumAll('${album.id}')">Download All</button>
+      </span>`;
+    }
+    const manageBtn = actions;
     const body = count
       ? `<div class="masonry">${photos.map((p, i) =>
           `<img class="reveal" src="${p.url}" alt="${album.name}" loading="lazy" onclick="openAlbumPhoto('${album.id}', ${i})" />`
@@ -1167,6 +1168,11 @@
   // ── Download (single → file, multiple → zip) ──
   async function downloadAll() {
     await downloadPhotos(currentAlbum.photos || [], currentAlbum.name);
+  }
+  // Download a whole album from its homepage gallery section (client view)
+  async function downloadAlbumAll(albumId) {
+    const album = (window._albums || []).find(a => a.id === albumId);
+    if (album) await downloadPhotos(album.photos || [], album.name);
   }
   async function downloadSelected() {
     if (!selectedPhotos.size) return;
