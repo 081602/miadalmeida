@@ -346,6 +346,30 @@
     .nav-links a.nav-cat:hover { color: var(--dark); }
     .nav-links a.nav-cat.active { color: var(--dark); border-bottom-color: var(--accent); }
 
+    /* client album dropdown */
+    .nav-dropdown { position: relative; }
+    .nav-dropdown-toggle .caret { font-size: 0.6rem; color: var(--accent); }
+    .nav-dropdown-menu {
+      display: none; position: absolute; top: calc(100% + 0.7rem); left: 50%; transform: translateX(-50%);
+      background: var(--white); border: 1px solid var(--light-border);
+      padding: 0.5rem 0; min-width: 180px; list-style: none; z-index: 120;
+      box-shadow: 0 6px 18px rgba(26,23,19,0.08);
+    }
+    .nav-dropdown.open .nav-dropdown-menu { display: block; }
+    .nav-dropdown-menu a {
+      display: block; padding: 0.5rem 1.2rem; white-space: nowrap;
+      font-size: 0.75rem; letter-spacing: 0.15em; text-transform: uppercase;
+      color: var(--mid); cursor: pointer; transition: color 0.2s;
+    }
+    .nav-dropdown-menu a:hover { color: var(--dark); }
+    .nav-dropdown-menu a.active { color: var(--dark); }
+    @media (max-width: 768px) {
+      .nav-dropdown-menu {
+        position: static; transform: none; border: none; box-shadow: none;
+        background: none; padding: 0.6rem 0 0 1.2rem; min-width: 0;
+      }
+    }
+
     /* ── INFO ── */
     #info { background: var(--white); }
     .info-inner {
@@ -623,7 +647,7 @@
     <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 6l12 12M18 6L6 18"/></svg>
   </button>
   <ul class="nav-links">
-    <li><a onclick="showSection('albums')">Home</a></li>
+    <li id="home-nav-item"><a onclick="showSection('albums')">Home</a></li>
     <span id="nav-categories" style="display:contents"></span>
     <li><a onclick="showSection('info')">Info</a></li>
     <li><button class="nav-admin-btn" id="login-nav-btn" onclick="handleLoginClick()">Login</button></li>
@@ -788,6 +812,7 @@
   let lbIndex = 0;
   let justLoggedIn = false;
   let selectedPhotos = new Set();
+  let clientSelectedAlbumId = null; // which album a client is viewing (defaults to first)
 
   // Clients (and admins) may download; anonymous portfolio visitors may not.
   function canDownload() {
@@ -810,6 +835,9 @@
     const isClient = window._isClient ? window._isClient() : false;
     const bar = document.getElementById('admin-bar');
     const loginBtn = document.getElementById('login-nav-btn');
+
+    // Clients don't need a Home link — their album is the home page
+    document.getElementById('home-nav-item').style.display = isClient ? 'none' : '';
 
     if (isAdmin) {
       bar.classList.add('visible');
@@ -844,12 +872,16 @@
     const admin = window._isAdmin && window._isAdmin();
     const isClient = window._isClient && window._isClient();
 
-    // Clients: show each of their albums as its own gallery section
+    // Clients: nav shows an album dropdown; the page shows the selected album
     if (isClient) {
-      renderNavCategories(albums, 'open'); // album view has the select/download controls
+      // Default to the most recently created album (list is sorted oldest-first)
+      const selected = albums.find(a => a.id === clientSelectedAlbumId) || albums[albums.length - 1];
+      clientSelectedAlbumId = selected ? selected.id : null;
+      renderClientNav(albums, selected);
       grid.className = 'gallery-wrap';
-      grid.innerHTML = albums.map(album => galleryAlbumSection(album, admin)).join('') ||
-        `<p class="gallery-empty" style="text-align:center">No albums yet.</p>`;
+      grid.innerHTML = selected
+        ? galleryAlbumSection(selected, false)
+        : `<p class="gallery-empty" style="text-align:center">No albums yet.</p>`;
       observeReveals();
       return;
     }
@@ -905,6 +937,40 @@
       ${body}
     </section>`;
   }
+
+  // ── Client nav: dropdown of their albums (plain label if just one) ──
+  function renderClientNav(albums, selected) {
+    const box = document.getElementById('nav-categories');
+    if (!box) return;
+    if (albums.length <= 1) {
+      box.innerHTML = selected
+        ? `<li><a class="nav-cat active" onclick="openAlbum('${selected.id}')">${selected.name}</a></li>` : '';
+      return;
+    }
+    const newestFirst = [...albums].reverse(); // albums arrive oldest-first
+    box.innerHTML = `<li class="nav-dropdown" id="client-album-dropdown">
+      <a class="nav-cat nav-dropdown-toggle" onclick="toggleClientDropdown(event)">${selected.name} <span class="caret">&#9662;</span></a>
+      <ul class="nav-dropdown-menu">
+        ${newestFirst.map(a => `<li><a class="${a.id === selected.id ? 'active' : ''}" onclick="selectClientAlbum('${a.id}')">${a.name}</a></li>`).join('')}
+      </ul>
+    </li>`;
+  }
+  function toggleClientDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('client-album-dropdown');
+    if (dd) dd.classList.toggle('open');
+  }
+  function selectClientAlbum(id) {
+    clientSelectedAlbumId = id;
+    renderAlbums();
+    closeNavMenu();
+    showSection('albums');
+  }
+  // Any click outside the dropdown closes it
+  document.addEventListener('click', () => {
+    const dd = document.getElementById('client-album-dropdown');
+    if (dd) dd.classList.remove('open');
+  });
 
   // ── Populate album categories in the top nav ──
   // mode 'open'  → clicking opens the album's full gallery view
@@ -1285,7 +1351,9 @@
   function toggleNavMenu() { document.querySelector('nav').classList.toggle('menu-open'); }
   function closeNavMenu() { document.querySelector('nav').classList.remove('menu-open'); }
   // Close the menu whenever a link or button inside it is tapped
+  // (except the album dropdown toggle, which opens its submenu)
   document.querySelector('.nav-links').addEventListener('click', e => {
+    if (e.target.closest('.nav-dropdown-toggle')) return;
     if (e.target.closest('a, button')) closeNavMenu();
   });
 
