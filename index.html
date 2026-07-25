@@ -921,8 +921,11 @@
     updateLbCounter();
   }
   function updateLbCounter() {
-    const total = (currentAlbum.photos || []).length;
-    document.getElementById('lb-counter').textContent = `${lbIndex + 1} of ${total}`;
+    const photos = currentAlbum.photos || [];
+    const counter = `${lbIndex + 1} of ${photos.length}`;
+    // For client albums, show the photo filename alongside the position counter.
+    const fname = currentAlbum.clientId ? (photos[lbIndex]?.name || '') : '';
+    document.getElementById('lb-counter').textContent = fname ? `${fname} · ${counter}` : counter;
   }
   function downloadCurrent() {
     const photo = (currentAlbum.photos || [])[lbIndex];
