@@ -14,7 +14,7 @@
       getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
     import {
-      getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot
+      getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc, addDoc, arrayUnion, arrayRemove, onSnapshot
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
     import {
       getStorage, ref, uploadBytes, getDownloadURL, deleteObject
@@ -50,6 +50,8 @@
           if (snap.exists() && snap.data().role === 'client') {
             currentUserRole = 'client';
             currentUserData = snap.data();
+            // Record the visit so admin sees "Last seen" in Manage Clients
+            updateDoc(doc(db, 'users', user.uid), { lastSeen: Date.now() }).catch(() => {});
           } else {
             // No doc or non-client doc = admin
             currentUserRole = 'admin';
@@ -138,6 +140,24 @@
       await updateDoc(doc(db, "albums", albumId), { photos });
     }
 
+    // Record client downloads: lastDownload on the user doc (for the Manage
+    // Clients panel) plus a full entry in the "activity" collection.
+    // Silent on failure — logging must never break a download.
+    async function logDownload(albumName, count) {
+      const user = auth.currentUser;
+      if (!user || currentUserRole !== 'client') return;
+      const at = Date.now();
+      try { await updateDoc(doc(db, 'users', user.uid), { lastDownload: { at, albumName, count } }); } catch(e) {}
+      try {
+        await addDoc(collection(db, 'activity'), {
+          type: 'download', uid: user.uid,
+          clientName: currentUserData?.name || '',
+          email: currentUserData?.email || user.email || '',
+          albumName, count, at
+        });
+      } catch(e) {}
+    }
+
     // ── Client management ──
     async function createClient(name, email, password) {
       const resp = await fetch(
@@ -163,7 +183,7 @@
     }
 
     // Expose to window for HTML event handlers
-    window.firebase = { login, logout, loadAlbums, loadClientAlbums, createAlbum, deleteAlbum, uploadPhoto, deletePhoto, savePhotoOrder, createClient, getClients, deleteClient };
+    window.firebase = { login, logout, loadAlbums, loadClientAlbums, createAlbum, deleteAlbum, uploadPhoto, deletePhoto, savePhotoOrder, logDownload, createClient, getClients, deleteClient };
     window._isAdmin = () => isAdmin;
     window._isClient = () => currentUserRole === 'client';
     window._clientData = () => currentUserData;
@@ -250,6 +270,7 @@
     .client-list-manage li .client-email { font-size: 0.75rem; color: var(--mid); }
     .client-list-manage li .client-actions { display: flex; gap: 0.5rem; }
     .client-list-manage li button { background: none; border: none; cursor: pointer; font-family: 'Jost', sans-serif; font-size: 0.75rem; color: var(--red); }
+    .client-list-manage li .client-meta { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.72rem; color: var(--mid); border-top: 1px dashed var(--light-border); padding-top: 0.5rem; margin-top: 0.2rem; }
     .album-checkboxes { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
     .album-checkboxes label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--mid); cursor: pointer; }
     .album-checkboxes input[type=checkbox] { accent-color: var(--accent); }
@@ -1252,7 +1273,11 @@
 
   async function downloadPhotos(photos, baseName) {
     if (!photos || !photos.length) return;
-    if (photos.length === 1) { await downloadSingle(photos[0]); return; }
+    if (photos.length === 1) {
+      await downloadSingle(photos[0]);
+      window.firebase.logDownload(baseName, 1); // no-op unless a client
+      return;
+    }
     toast(`Preparing ${photos.length} photos…`);
     try {
       await ensureJSZip();
@@ -1272,6 +1297,7 @@
       const blob = await zip.generateAsync({ type: 'blob' });
       triggerDownload(URL.createObjectURL(blob), sanitizeName(baseName) + '.zip');
       toast('Download ready');
+      window.firebase.logDownload(baseName, photos.length); // no-op unless a client
     } catch (e) {
       console.error('Download failed', e);
       toast('Download failed — Storage CORS may need configuring');
@@ -1402,7 +1428,18 @@
       el.innerHTML = '<li style="opacity:.5;font-size:.82rem;padding:.5rem 0">No clients yet</li>';
       return;
     }
-    el.innerHTML = clients.map(c => `
+    const fmtDate = ts => {
+      if (!ts) return null;
+      const d = new Date(ts);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+        + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    };
+    el.innerHTML = clients.map(c => {
+      const seen = fmtDate(c.lastSeen);
+      const dl = c.lastDownload
+        ? `${fmtDate(c.lastDownload.at)} &mdash; ${c.lastDownload.albumName} (${c.lastDownload.count} photo${c.lastDownload.count !== 1 ? 's' : ''})`
+        : null;
+      return `
       <li>
         <div class="client-header">
           <div>
@@ -1414,7 +1451,12 @@
             <button onclick="removeClient('${c.uid}')">Remove</button>
           </div>
         </div>
-      </li>`).join('');
+        <div class="client-meta">
+          <span>Last seen: ${seen || 'never'}</span>
+          <span>Last download: ${dl || 'none yet'}</span>
+        </div>
+      </li>`;
+    }).join('');
   }
   async function addClient() {
     const name  = document.getElementById('new-client-name').value.trim();
