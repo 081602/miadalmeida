@@ -1190,29 +1190,65 @@
   // ── Upload photos ──
   async function handleUpload(event) {
     const files = Array.from(event.target.files);
+    event.target.value = '';
     if (!files.length) return;
-    toast(`Uploading ${files.length} photo${files.length > 1 ? 's' : ''}…`);
-    try {
-      for (const file of files) {
-        const photo = await window.firebase.uploadPhoto(currentAlbum.id, file);
-        currentAlbum.photos = [...(currentAlbum.photos || []), photo];
+    const albumId = currentAlbum.id;
+    let done = 0;
+    const failed = [];
+    toast(`Uploading 0 / ${files.length}…`);
+
+    // One file, with up to 2 retries (transient network errors shouldn't kill a batch)
+    const uploadOne = async file => {
+      for (let attempt = 1; ; attempt++) {
+        try { return await window.firebase.uploadPhoto(albumId, file); }
+        catch(e) {
+          if (attempt >= 3) throw e;
+          await new Promise(r => setTimeout(r, 1000 * attempt));
+        }
       }
-      // Refresh from Firestore
+    };
+
+    // Up to 3 uploads in flight; failures are recorded, never abort the batch
+    const queue = [...files];
+    const worker = async () => {
+      while (queue.length) {
+        const file = queue.shift();
+        try {
+          const photo = await uploadOne(file);
+          if (currentAlbum && currentAlbum.id === albumId)
+            currentAlbum.photos = [...(currentAlbum.photos || []), photo];
+        } catch(e) {
+          console.error('Upload failed:', file.name, e);
+          failed.push(file.name);
+        }
+        done++;
+        toast(`Uploading ${done} / ${files.length}…`);
+        // show progress in the grid as photos land
+        if (done % 5 === 0 && currentAlbum && currentAlbum.id === albumId) renderPhotosGrid();
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+
+    // Refresh from Firestore (authoritative content and order)
+    try {
       if (currentClientContext) {
         const clientAlbums = await window.firebase.loadClientAlbums(currentClientContext.uid);
-        const updated = clientAlbums.find(a => a.id === currentAlbum.id);
-        if (updated) currentAlbum = updated;
+        const updated = clientAlbums.find(a => a.id === albumId);
+        if (updated && currentAlbum && currentAlbum.id === albumId) currentAlbum = updated;
       } else {
         await window.firebase.loadAlbums();
-        const updated = (window._albums || []).find(a => a.id === currentAlbum.id);
-        if (updated) currentAlbum = updated;
+        const updated = (window._albums || []).find(a => a.id === albumId);
+        if (updated && currentAlbum && currentAlbum.id === albumId) currentAlbum = updated;
       }
-      renderPhotosGrid();
-      toast(`${files.length} photo${files.length > 1 ? 's' : ''} uploaded`);
-    } catch(e) {
-      toast('Upload failed — check Firebase Storage rules');
+    } catch(e) {}
+    if (currentAlbum && currentAlbum.id === albumId) renderPhotosGrid();
+
+    if (!failed.length) {
+      toast(`All ${files.length} photo${files.length > 1 ? 's' : ''} uploaded ✓`);
+    } else {
+      const names = failed.slice(0, 3).join(', ') + (failed.length > 3 ? '…' : '');
+      toast(`${files.length - failed.length} uploaded, ${failed.length} failed (${names}) — select those again to retry`);
     }
-    event.target.value = '';
   }
 
   // ── Delete photo ──
