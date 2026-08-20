@@ -166,7 +166,25 @@
           body: JSON.stringify({ email, password, returnSecureToken: true }) }
       );
       const data = await resp.json();
-      if (data.error) throw new Error(data.error.message);
+      if (data.error) {
+        if (data.error.message === 'EMAIL_EXISTS') {
+          // Removing a client deletes their profile but the browser cannot
+          // delete their Auth login. If the entered password matches that
+          // leftover login, re-link it as this new client.
+          const si = await fetch(
+            `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseConfig.apiKey}`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password, returnSecureToken: true }) }
+          );
+          const sd = await si.json();
+          if (sd.error) {
+            throw new Error('This email already has a login account. Enter its original password to reuse it — or delete the user in Firebase Console → Authentication, then try again.');
+          }
+          await setDoc(doc(db, 'users', sd.localId), { role: 'client', name, email });
+          return sd.localId;
+        }
+        throw new Error(data.error.message);
+      }
       await setDoc(doc(db, 'users', data.localId), { role: 'client', name, email });
       return data.localId;
     }
