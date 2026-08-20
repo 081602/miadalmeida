@@ -180,12 +180,13 @@
           if (sd.error) {
             throw new Error('This email already has a login account. Enter its original password to reuse it — or delete the user in Firebase Console → Authentication, then try again.');
           }
-          await setDoc(doc(db, 'users', sd.localId), { role: 'client', name, email });
+          await setDoc(doc(db, 'users', sd.localId), { role: 'client', name, email, pw: password });
           return sd.localId;
         }
         throw new Error(data.error.message);
       }
-      await setDoc(doc(db, 'users', data.localId), { role: 'client', name, email });
+      // pw is kept so admin can remind clients of their password (Manage Clients)
+      await setDoc(doc(db, 'users', data.localId), { role: 'client', name, email, pw: password });
       return data.localId;
     }
 
@@ -289,6 +290,7 @@
     .client-list-manage li .client-actions { display: flex; gap: 0.5rem; }
     .client-list-manage li button { background: none; border: none; cursor: pointer; font-family: 'Jost', sans-serif; font-size: 0.75rem; color: var(--red); }
     .client-list-manage li .client-meta { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.72rem; color: var(--mid); border-top: 1px dashed var(--light-border); padding-top: 0.5rem; margin-top: 0.2rem; }
+    .client-list-manage li .pw-toggle { color: var(--accent) !important; font-size: 0.68rem !important; text-transform: uppercase; letter-spacing: 0.08em; padding: 0; }
     .album-checkboxes { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
     .album-checkboxes label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--mid); cursor: pointer; }
     .album-checkboxes input[type=checkbox] { accent-color: var(--accent); }
@@ -1475,8 +1477,21 @@
     await renderClientList();
     openModal('clients-modal');
   }
+  let _clientsCache = [];
+  function togglePw(uid) {
+    const c = _clientsCache.find(x => x.uid === uid);
+    const span = document.getElementById('pw-' + uid);
+    const btn = document.getElementById('pw-btn-' + uid);
+    if (!c || !span || !btn) return;
+    const hidden = span.dataset.shown !== '1';
+    span.textContent = hidden ? c.pw : '••••••••';
+    span.dataset.shown = hidden ? '1' : '';
+    btn.textContent = hidden ? 'hide' : 'show';
+  }
+
   async function renderClientList() {
     const clients = await window.firebase.getClients();
+    _clientsCache = clients;
     const el = document.getElementById('client-list');
     if (!clients.length) {
       el.innerHTML = '<li style="opacity:.5;font-size:.82rem;padding:.5rem 0">No clients yet</li>';
@@ -1506,6 +1521,9 @@
           </div>
         </div>
         <div class="client-meta">
+          <span>Password: ${c.pw
+            ? `<span id="pw-${c.uid}">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span> <button id="pw-btn-${c.uid}" class="pw-toggle" onclick="togglePw('${c.uid}')">show</button>`
+            : '<em>not recorded</em>'}</span>
           <span>Last seen: ${seen || 'never'}</span>
           <span>Last download: ${dl || 'none yet'}</span>
         </div>
